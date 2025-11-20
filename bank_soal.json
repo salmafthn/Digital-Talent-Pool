@@ -1,0 +1,25 @@
+[
+  {
+    "id": 1,
+    "text": "Manakah yang termasuk library Python untuk Data Science?",
+    "options": ["React.js", "Pandas", "Laravel", "Flutter"],
+    "correct_option": "Pandas"
+  },
+  {
+    "id": 2,
+    "text": "Apa kepanjangan dari SQL?",
+    "options": [
+      "Structured Query Language",
+      "Strong Question List",
+      "Simple Query Logic",
+      "System Quality Level"
+    ],
+    "correct_option": "Structured Query Language"
+  },
+  {
+    "id": 3,
+    "text": "Algoritma mana yang termasuk Supervised Learning?",
+    "options": ["K-Means", "Linear Regression", "Apriori", "DBSCAN"],
+    "correct_option": "Linear Regression"
+  }
+]
