@@ -2,6 +2,8 @@
 
 Backend ini dibangun menggunakan Python (FastAPI) dan Supabase sebagai database. Sistem ini masih sebatas testing dan mocking untuk logika profil pengguna, mock chatbot AI, asesmen kompetensi, dan dashboard rekomendasi.
 
+---
+
 ## Prasyarat
 
 Pastikan di laptop sudah terinstall:
@@ -49,6 +51,8 @@ Ikuti langkah berikut untuk menjalankan server di local:
 - bank_soal.json: Database statis untuk soal ujian (mocking)
 - recommendations.json: Database statis untuk rekomendasi lowongan dan modul belajar
 - .env: File konfigurasi kredensial (jangan di-upload ke git)
+
+---
 
 ## Catatan
 
