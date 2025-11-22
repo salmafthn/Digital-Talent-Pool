@@ -14,7 +14,7 @@ const seedMessages: Message[] = [
   {
     id: 1,
     role: "ai",
-    text: "Halo! Selamat datang di Diploy. Berdasarkan profil Anda, saya telah menganalisis kompetensi Anda di area Data Science & Cloud dengan level sementara 4. Anda sudah memiliki dasar yang baik dalam beberapa aspek.",
+    text: "Halo! Selamat datang di Diploy. Berdasarkan profil Anda, saya telah menganalisis kompetensi Anda dan saya akan menanyakan beberapa hal teknis untuk memperdalam kedekatan skill anda dengan level yang tersedia.",
   },
   {
     id: 2,
@@ -29,10 +29,10 @@ const seedMessages: Message[] = [
   {
     id: 4,
     role: "ai",
-    text: "Bagus! Dengan pengalaman tersebut, saya merekomendasikan Anda untuk mengikuti assessment lebih lanjut guna menentukan level yang tepat di berbagai area fungsi TI. Hasilnya akan membantu Anda menemukan jalur karir yang paling sesuai.",
+    text: "Bagus! Dengan pengalaman tersebut, saya merekomendasikan Anda untuk mengikuti assessment lebih lanjut guna memvalidasi level yang sudah saya petakan di beberapa area fungsi TI. Hasilnya akan membantu Anda menemukan jalur karir yang paling sesuai.",
     kind: "invite",
   },
-]
+];
 
 export default function ChatbotPage() {
   const router = useRouter()
@@ -74,9 +74,9 @@ export default function ChatbotPage() {
       const botReply: Message = {
         id: messages.length + 2,
         role: "ai",
-        text: "Terima kasih atas informasinya. Untuk mendapatkan penilaian yang akurat, saya merekomendasikan Anda segera mengikuti assessment untuk menentukan level kompetensi Anda di berbagai area fungsi TI.",
+        text: "Terima kasih atas informasinya. Untuk mendapatkan penilaian yang akurat, saya merekomendasikan Anda segera mengikuti assessment untuk memvalidasi level kompetensi Anda di berbagai area fungsi TI. Silahkan klik tombol dibawah ini untuk melihat pemetaan level anda!",
         kind: "invite",
-      }
+      };
       setMessages((prev) => [...prev, botReply])
     }, 500)
   }
