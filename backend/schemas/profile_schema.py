@@ -15,6 +15,7 @@ class EducationLevelEnum(str, Enum):
     S1 = "S1"
     S2 = "S2"
     S3 = "S3"
+    LAINNYA = "Lainnya"
     
 class JobTypeEnum(str, Enum):
     FULL_TIME = "Full Time"
@@ -31,10 +32,10 @@ class FunctionalAreaEnum(str, Enum):
 
 class EducationBase(BaseModel):
     level: EducationLevelEnum
-    institution_name: str
+    institution_name: Optional[str] = None
     faculty: Optional[str] = None
-    major: str
-    enrollment_year: int
+    major: Optional[str] = None
+    enrollment_year: Optional[int] = None
     graduation_year: Optional[int] = None
     is_current: bool = False
     gpa: Optional[str] = None
@@ -42,6 +43,27 @@ class EducationBase(BaseModel):
 
     @model_validator(mode='after')
     def check_education_logic(self):
+        # LOGIKA 1: Jika "Lainnya", kosongkan semua field lain
+        if self.level == EducationLevelEnum.LAINNYA:
+            self.institution_name = None
+            self.faculty = None
+            self.major = None
+            self.enrollment_year = None
+            self.graduation_year = None
+            self.gpa = None
+            self.final_project_title = None
+            self.is_current = False # Default false
+            return self
+
+        # LOGIKA 2: Jika BUKAN "Lainnya", Institusi, Jurusan, Tahun Masuk WAJIB DIISI
+        if not self.institution_name:
+            raise ValueError("Nama Institusi wajib diisi")
+        if not self.major:
+            raise ValueError("Jurusan wajib diisi")
+        if not self.enrollment_year:
+            raise ValueError("Tahun Masuk wajib diisi")
+
+        # LOGIKA 3: SMA/SMK tidak perlu IPK dll
         if self.level == EducationLevelEnum.SMA_SMK:
             self.gpa = None
             self.faculty = None
@@ -51,7 +73,7 @@ class EducationBase(BaseModel):
             raise ValueError("Jika masih menempuh pendidikan, tahun lulus tidak boleh diisi.")
             
         return self
-
+    
 class EducationCreate(EducationBase):
     pass
 

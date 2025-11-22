@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Plus } from "lucide-react"
 
 type PendidikanItem = {
   id: number
@@ -24,6 +25,7 @@ interface Props {
 }
 
 const STORAGE_KEY = "profilePendidikan"
+const MAX_PENDIDIKAN = 3
 
 function createEmptyItem(id: number): PendidikanItem {
   return {
@@ -66,7 +68,7 @@ export function PendidikanSection({ onNext }: Props) {
           })),
         )
       } else if (parsed && typeof parsed === "object") {
-        // fallback kalau dulu sempat nyimpan 1 object saja
+        // fallback kalau dulu pernah nyimpan single object
         setItems([
           {
             id: 1,
@@ -89,10 +91,8 @@ export function PendidikanSection({ onNext }: Props) {
 
   function applyBusinessRules(item: PendidikanItem): PendidikanItem {
     const isLainnya = item.jenjang === "LAINNYA"
-
     let next = { ...item }
 
-    // Jika Lainnya -> semua field selain jenjang auto "-"
     if (isLainnya) {
       next = {
         ...next,
@@ -106,7 +106,6 @@ export function PendidikanSection({ onNext }: Props) {
         masihMenempuh: false,
       }
     } else {
-      // kalau bukan lainnya dan masihMenempuh true -> tahunLulus "-"
       if (next.masihMenempuh) {
         next.tahunLulus = "-"
       }
@@ -124,9 +123,7 @@ export function PendidikanSection({ onNext }: Props) {
       prev.map((item) => {
         if (item.id !== id) return item
 
-        let updated: PendidikanItem = { ...item, [key]: value }
-
-        // aturan khusus saat jenjang atau masihMenempuh berubah
+        let updated = { ...item, [key]: value }
         if (key === "jenjang" || key === "masihMenempuh") {
           updated = applyBusinessRules(updated)
         }
@@ -138,11 +135,10 @@ export function PendidikanSection({ onNext }: Props) {
 
   function addItem() {
     setItems((prev) => {
-      if (prev.length >= 3) return prev // sudah maksimal 3, tidak nambah lagi
+      if (prev.length >= MAX_PENDIDIKAN) return prev
       return [...prev, createEmptyItem(prev.length + 1)]
     })
   }
-
 
   function removeItem(id: number) {
     setItems((prev) => (prev.length <= 1 ? prev : prev.filter((item) => item.id !== id)))
@@ -152,6 +148,25 @@ export function PendidikanSection({ onNext }: Props) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(items))
     onNext()
   }
+
+  // VALIDASI: minimal pendidikan pertama terisi
+  // Aturan:
+  // - Jenjang wajib diisi
+  // - Kalau jenjang "LAINNYA" → cukup jenjang saja (field lain auto "-")
+  // - Selain itu, Nama Institusi juga wajib diisi
+  const isFirstItemValid = (() => {
+    const first = items[0]
+    if (!first) return false
+    if (!first.jenjang) return false
+
+    if (first.jenjang === "LAINNYA") {
+      return true
+    }
+
+    if (!first.namaInstitusi.trim()) return false
+
+    return true
+  })()
 
   return (
     <div className="space-y-6">
@@ -186,8 +201,8 @@ export function PendidikanSection({ onNext }: Props) {
                 )}
               </div>
 
+              {/* Jenjang + Nama Institusi */}
               <div className="grid gap-4 sm:grid-cols-2">
-                {/* Pendidikan / Jenjang */}
                 <div>
                   <label className="text-sm font-medium">Jenjang</label>
                   <select
@@ -206,30 +221,25 @@ export function PendidikanSection({ onNext }: Props) {
                   </select>
                 </div>
 
-                {/* Nama institusi */}
                 <div>
                   <label className="text-sm font-medium">Nama Institusi</label>
                   <Input
                     value={item.namaInstitusi}
-                    onChange={(e) =>
-                      updateItem(item.id, "namaInstitusi", e.target.value)
-                    }
+                    onChange={(e) => updateItem(item.id, "namaInstitusi", e.target.value)}
                     placeholder={isLainnya ? "-" : "Universitas/Sekolah"}
                     disabled={isLainnya}
                   />
                 </div>
               </div>
 
+              {/* Fakultas + Jurusan */}
               <div className="grid gap-4 sm:grid-cols-2">
-                {/* Fakultas - disembunyikan kalau SMA/SMK */}
                 {!isSMA && (
                   <div>
                     <label className="text-sm font-medium">Fakultas</label>
                     <Input
                       value={item.fakultas}
-                      onChange={(e) =>
-                        updateItem(item.id, "fakultas", e.target.value)
-                      }
+                      onChange={(e) => updateItem(item.id, "fakultas", e.target.value)}
                       placeholder={isLainnya ? "-" : "Nama fakultas"}
                       disabled={isLainnya}
                     />
@@ -240,24 +250,21 @@ export function PendidikanSection({ onNext }: Props) {
                   <label className="text-sm font-medium">Jurusan</label>
                   <Input
                     value={item.jurusan}
-                    onChange={(e) =>
-                      updateItem(item.id, "jurusan", e.target.value)
-                    }
+                    onChange={(e) => updateItem(item.id, "jurusan", e.target.value)}
                     placeholder={isLainnya ? "-" : "Nama jurusan"}
                     disabled={isLainnya}
                   />
                 </div>
               </div>
 
+              {/* Tahun Masuk - Tahun Lulus - IPK */}
               <div className="grid gap-4 sm:grid-cols-3">
                 <div>
                   <label className="text-sm font-medium">Tahun Masuk</label>
                   <Input
                     type={isLainnya ? "text" : "number"}
                     value={item.tahunMasuk}
-                    onChange={(e) =>
-                      updateItem(item.id, "tahunMasuk", e.target.value)
-                    }
+                    onChange={(e) => updateItem(item.id, "tahunMasuk", e.target.value)}
                     placeholder={isLainnya ? "-" : "YYYY"}
                     disabled={isLainnya}
                   />
@@ -268,9 +275,7 @@ export function PendidikanSection({ onNext }: Props) {
                   <Input
                     type={isLainnya || item.masihMenempuh ? "text" : "number"}
                     value={item.tahunLulus}
-                    onChange={(e) =>
-                      updateItem(item.id, "tahunLulus", e.target.value)
-                    }
+                    onChange={(e) => updateItem(item.id, "tahunLulus", e.target.value)}
                     placeholder={isLainnya || item.masihMenempuh ? "-" : "YYYY"}
                     disabled={isLainnya || item.masihMenempuh}
                   />
@@ -293,7 +298,6 @@ export function PendidikanSection({ onNext }: Props) {
                   </div>
                 </div>
 
-                {/* IPK - disembunyikan kalau SMA/SMK */}
                 {!isSMA && (
                   <div>
                     <label className="text-sm font-medium">IPK</label>
@@ -309,15 +313,12 @@ export function PendidikanSection({ onNext }: Props) {
                 )}
               </div>
 
-              {/* Judul tugas akhir - disembunyikan kalau SMA/SMK */}
               {!isSMA && (
                 <div>
                   <label className="text-sm font-medium">Judul Tugas Akhir</label>
                   <Textarea
                     value={item.judulTugasAkhir}
-                    onChange={(e) =>
-                      updateItem(item.id, "judulTugasAkhir", e.target.value)
-                    }
+                    onChange={(e) => updateItem(item.id, "judulTugasAkhir", e.target.value)}
                     placeholder={isLainnya ? "-" : "Judul skripsi/thesis"}
                     rows={2}
                     disabled={isLainnya}
@@ -329,23 +330,30 @@ export function PendidikanSection({ onNext }: Props) {
         })}
       </div>
 
+      {/* Tombol Tambah + Simpan */}
       <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
-        <Button
-          type="button"
-          variant="outline"
-          onClick={addItem}
-          disabled={items.length >= 3}
-        >
-          + Tambah pendidikan
-          {items.length >= 3 && (
+        <div className="flex flex-col gap-1">
+          {items.length < MAX_PENDIDIKAN ? (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={addItem}
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Tambah Pendidikan
+            </Button>
+          ) : (
             <p className="text-xs text-muted-foreground">
               Maksimal 3 riwayat pendidikan.
             </p>
           )}
-        </Button>
+        </div>
 
-
-        <Button type="button" onClick={handleSave}>
+        <Button
+          type="button"
+          onClick={handleSave}
+          disabled={!isFirstItemValid}  //  abu-abu kalau pendidikan pertama belum terisi minimal
+        >
           Simpan &amp; Lanjut ke Sertifikasi
         </Button>
       </div>

@@ -15,14 +15,28 @@ auth_service = AuthService()
 
 @router.post("/register")
 def register(user: auth_schema.UserCreate, db: Session = Depends(get_db)):
-    # 1. Cek duplikat (opsional, karena di service biasanya dicek lagi, tapi gapapa biar cepat)
+    # 1. Cek duplikat Email
     if db.query(models.User).filter(models.User.email == user.email).first():
         raise HTTPException(status_code=400, detail="Email already registered")
     
-    # 2. Panggil Service (Service akan simpan User DAN Profile sekaligus)
-    auth_service.create_user(db, user)
+    # 2. Cek duplikat NIK (Karena NIK harus unik)
+    if db.query(models.Profile).filter(models.Profile.nik == user.nik).first():
+        raise HTTPException(status_code=400, detail="NIK already registered")
     
-    # 3. Selesai! Jangan bikin profile lagi disini.
+    # 3. Buat User Akun
+    new_user = auth_service.create_user(db, user)
+    
+    # 4. Buat Profile dengan Data Lengkap
+    new_profile = models.Profile(
+        user_id=new_user.id,
+        full_name=user.full_name,
+        nik=user.nik,
+        gender=user.gender.value, # Ambil value string dari Enum
+        birth_date=user.birth_date
+    )
+    db.add(new_profile)
+    db.commit()
+    
     return {"message": "User created successfully"}
 
 @router.post("/login", response_model=auth_schema.Token)

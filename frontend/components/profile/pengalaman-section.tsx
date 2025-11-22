@@ -17,6 +17,7 @@ type Pengalaman = {
   tanggalSelesai: string
   bidangPekerjaan: string
   deskripsi: string
+  masihBerlangsung: boolean
 }
 
 export function PengalamanSection() {
@@ -25,11 +26,21 @@ export function PengalamanSection() {
   const [agree, setAgree] = useState(false)
 
   useEffect(() => {
-    const raw = typeof window !== "undefined" ? localStorage.getItem("profilePengalaman") : null
+    const raw =
+      typeof window !== "undefined" ? localStorage.getItem("profilePengalaman") : null
     if (raw) {
       try {
-        setItems(JSON.parse(raw))
-      } catch {}
+        const parsed = JSON.parse(raw) as Pengalaman[]
+        // pastikan field masihBerlangsung selalu ada (kalau data lama)
+        setItems(
+          parsed.map((item) => ({
+            ...item,
+            masihBerlangsung: Boolean(item.masihBerlangsung),
+          })),
+        )
+      } catch {
+        // abaikan error parse
+      }
     }
   }, [])
 
@@ -45,12 +56,19 @@ export function PengalamanSection() {
         tanggalSelesai: "",
         bidangPekerjaan: "",
         deskripsi: "",
+        masihBerlangsung: false,
       },
     ])
   }
 
-  function updateItem<K extends keyof Pengalaman>(id: string, key: K, value: string) {
-    setItems((prev) => prev.map((item) => (item.id === id ? { ...item, [key]: value } : item)))
+  function updateItem<K extends keyof Pengalaman>(
+    id: string,
+    key: K,
+    value: Pengalaman[K],
+  ) {
+    setItems((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, [key]: value } : item)),
+    )
   }
 
   function deleteItem(id: string) {
@@ -105,13 +123,15 @@ export function PengalamanSection() {
               <label className="text-sm font-medium">Nama Perusahaan</label>
               <Input
                 value={item.namaPerusahaan}
-                onChange={(e) => updateItem(item.id, "namaPerusahaan", e.target.value)}
+                onChange={(e) =>
+                  updateItem(item.id, "namaPerusahaan", e.target.value)
+                }
                 placeholder="Nama perusahaan/organisasi"
               />
             </div>
           </div>
 
-          {/* existing code */}
+          {/* Tanggal Mulai & Tanggal Selesai + checkbox masih berlangsung */}
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <label className="text-sm font-medium">Tanggal Mulai</label>
@@ -126,8 +146,32 @@ export function PengalamanSection() {
               <Input
                 type="date"
                 value={item.tanggalSelesai}
-                onChange={(e) => updateItem(item.id, "tanggalSelesai", e.target.value)}
+                onChange={(e) =>
+                  updateItem(item.id, "tanggalSelesai", e.target.value)
+                }
+                disabled={item.masihBerlangsung}
               />
+              <div className="flex items-center gap-2 mt-2">
+                <Checkbox
+                  id={`masih-berlangsung-${item.id}`}
+                  checked={item.masihBerlangsung}
+                  onCheckedChange={(checked) => {
+                    const isChecked = Boolean(checked)
+                    updateItem(item.id, "masihBerlangsung", isChecked)
+                    if (isChecked) {
+                      // kalau masih berlangsung, kosongkan tanggal selesai
+                      updateItem(item.id, "tanggalSelesai", "")
+                    }
+                  }}
+                  className="h-4 w-4 border-slate-500 data-[state=checked]:bg-blue-500 data-[state=checked]:border-blue-500"
+                />
+                <label
+                  htmlFor={`masih-berlangsung-${item.id}`}
+                  className="text-xs sm:text-sm"
+                >
+                  Masih berlangsung
+                </label>
+              </div>
             </div>
           </div>
 
@@ -142,7 +186,7 @@ export function PengalamanSection() {
               <option value="Data Science & Cloud">Data Science & Cloud</option>
               <option value="Tata Kelola TI">Tata Kelola TI</option>
               <option value="Cybersecurity">Cybersecurity</option>
-              <option value="PPD">PPD</option>
+              <option value="PPD">Pengembangan Produk Digital</option>
               <option value="Teknologi Informasi">Teknologi Informasi</option>
               <option value="Layanan TI">Layanan TI</option>
             </select>
@@ -182,14 +226,15 @@ export function PengalamanSection() {
             onCheckedChange={(checked) => setAgree(checked as boolean)}
             className="mt-1 h-5 w-5 border-2 border-gray-300"
           />
-          <span className="leading-relaxed">
+          <span className="leading-relaxed text-sm">
             Dengan mencentang kolom ini, saya menyatakan telah mengisi data dengan sebenar-benarnya.
           </span>
         </label>
 
+
         <div className="flex justify-end pt-2">
           <Button onClick={handleSubmit} disabled={!agree}>
-            Submit Profil & Lanjut ke Chatbot
+            Submit Profil &amp; Lanjut ke Chatbot
           </Button>
         </div>
       </div>

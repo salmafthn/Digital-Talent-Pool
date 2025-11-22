@@ -106,7 +106,23 @@ def delete_certification(
     cert_id: int,
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
-):
+): 
+    cert = service.get_certification(db, current_user.id, cert_id)
+    
+    # 2. Hapus File Fisik (Jika ada)
+    if cert.proof_url:
+        # Konversi URL Web ke Path File Lokal
+        # URL: /static/certifications/namafile.pdf  -->  Path: uploads/certifications/namafile.pdf
+        filename = cert.proof_url.split("/")[-1]
+        file_path = f"uploads/certifications/{filename}"
+        
+        # Cek apakah file benar-benar ada, lalu hapus
+        if os.path.exists(file_path):
+            try:
+                os.remove(file_path)
+            except Exception as e:
+                print(f"Gagal menghapus file fisik: {e}") 
+ 
     return service.delete_certification(db, current_user.id, cert_id)
 
     
@@ -166,3 +182,28 @@ async def upload_avatar(
     update_data = profile_schema.ProfileUpdate(avatar_url=file_url)
     
     return service.update_profile(db, current_user.id, update_data) 
+
+@router.delete("/avatar", response_model=profile_schema.ProfileFullResponse)
+def delete_avatar(
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    # 1. Ambil profil user saat ini untuk mengecek URL avatar lama
+    profile = service.get_profile_by_user_id(db, current_user.id)
+    
+    # 2. Hapus File Fisik (Jika ada)
+    if profile.avatar_url:
+        # Konversi URL Web ke Path File Lokal
+        # URL: /static/avatars/namafile.jpg  -->  Path: uploads/avatars/namafile.jpg
+        filename = profile.avatar_url.split("/")[-1]
+        file_path = f"uploads/avatars/{filename}"
+        
+        # Cek apakah file benar-benar ada di folder, lalu hapus
+        if os.path.exists(file_path):
+            try:
+                os.remove(file_path)
+            except Exception as e:
+                print(f"Gagal menghapus file fisik: {e}") # Print error di terminal saja, jangan stop proses API
+    
+    # 3. Hapus Link di Database
+    return service.remove_avatar(db, current_user.id)

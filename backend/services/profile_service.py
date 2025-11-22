@@ -3,6 +3,7 @@ import models
 from schemas import profile_schema
 from fastapi import HTTPException
 
+
 class ProfileService:
     
     # 1. Get Profil Lengkap
@@ -28,13 +29,11 @@ class ProfileService:
 ## -- EDUCATION --
     def add_education(self, db: Session, user_id: int, education: profile_schema.EducationCreate):
         profile = self.get_profile_by_user_id(db, user_id)
-        
-        # Cek jumlah pendidikan saat ini
+         
         count = db.query(models.Education).filter(models.Education.profile_id == profile.id).count()
         if count >= 3:
             raise HTTPException(status_code=400, detail="Maksimal hanya boleh 3 data pendidikan.")
-            
-        # Simpan data baru
+             
         new_edu = models.Education(**education.dict(), profile_id=profile.id)
         db.add(new_edu)
         db.commit()
@@ -55,12 +54,16 @@ class ProfileService:
         db.delete(edu)
         db.commit()
         return {"message": "Education deleted"}
-
-    # ... (Buat fungsi serupa untuk Certification dan Experience) ...
-    # Biar singkat, polanya sama persis dengan add_education dan delete_education
     
+## -- CERTIFICATION --
     def add_certification(self, db: Session, user_id: int, cert: profile_schema.CertificationCreate):
         profile = self.get_profile_by_user_id(db, user_id)
+        
+        # Cek Maksimal 3
+        count = db.query(models.Certification).filter(models.Certification.profile_id == profile.id).count()
+        if count >= 3:
+            raise HTTPException(status_code=400, detail="Maksimal hanya boleh 3 sertifikasi.")
+
         new_cert = models.Certification(**cert.dict(), profile_id=profile.id)
         db.add(new_cert)
         db.commit()
@@ -82,10 +85,28 @@ class ProfileService:
         db.delete(cert)
         db.commit()
         return {"message": "Certification deleted successfully"}
+    
+    def get_certification(self, db: Session, user_id: int, cert_id: int):
+        profile = self.get_profile_by_user_id(db, user_id)
+        
+        cert = db.query(models.Certification).filter(
+            models.Certification.id == cert_id,
+            models.Certification.profile_id == profile.id
+        ).first()
+        
+        if not cert:
+            raise HTTPException(status_code=404, detail="Certification not found")
+            
+        return cert
 
 ## -- EXPERIENCE --
     def add_experience(self, db: Session, user_id: int, exp: profile_schema.ExperienceCreate):
         profile = self.get_profile_by_user_id(db, user_id)
+         
+        count = db.query(models.Experience).filter(models.Experience.profile_id == profile.id).count()
+        if count >= 3:
+            raise HTTPException(status_code=400, detail="Maksimal hanya boleh 3 pengalaman kerja.")
+
         new_exp = models.Experience(**exp.dict(), profile_id=profile.id)
         db.add(new_exp)
         db.commit()

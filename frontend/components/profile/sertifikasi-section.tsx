@@ -19,6 +19,9 @@ interface Props {
   onNext: () => void
 }
 
+const MAX_SERTIFIKASI = 3
+const YEARS = Array.from({ length: 11 }, (_, i) => 2020 + i) // 2020–2030
+
 export function SertifikasiSection({ onNext }: Props) {
   const [items, setItems] = useState<Sertifikasi[]>([])
 
@@ -32,17 +35,20 @@ export function SertifikasiSection({ onNext }: Props) {
   }, [])
 
   function addItem() {
-    setItems((prev) => [
-      ...prev,
-      {
-        id: Date.now().toString(),
-        namaProgram: "",
-        penyelenggara: "",
-        tahun: new Date().getFullYear().toString(),
-        bukti: "",
-        keterangan: "",
-      },
-    ])
+    setItems((prev) => {
+      if (prev.length >= MAX_SERTIFIKASI) return prev // batasi maksimal 3
+      return [
+        ...prev,
+        {
+          id: Date.now().toString(),
+          namaProgram: "",
+          penyelenggara: "",
+          tahun: new Date().getFullYear().toString(),
+          bukti: "",
+          keterangan: "",
+        },
+      ]
+    })
   }
 
   function updateItem<K extends keyof Sertifikasi>(id: string, key: K, value: string) {
@@ -89,7 +95,7 @@ export function SertifikasiSection({ onNext }: Props) {
                 onChange={(e) => updateItem(item.id, "tahun", e.target.value)}
                 className="mt-1 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
               >
-                {Array.from({ length: 31 }, (_, i) => 2000 + i).map((year) => (
+                {YEARS.map((year) => (
                   <option key={year} value={year.toString()}>
                     {year}
                   </option>
@@ -125,15 +131,25 @@ export function SertifikasiSection({ onNext }: Props) {
         </div>
       ))}
 
-      <div className="flex gap-3">
-        <Button variant="outline" onClick={addItem}>
-          <Plus className="h-4 w-4 mr-2" />
-          Tambah Sertifikasi
-        </Button>
+      <div className="flex items-center gap-3">
+        <div className="flex flex-col gap-1">
+          {items.length < MAX_SERTIFIKASI ? (
+            <Button variant="outline" onClick={addItem}>
+              <Plus className="h-4 w-4 mr-2" />
+              Tambah Sertifikasi
+            </Button>
+          ) : (
+            <span className="text-xs text-slate-500">
+              Maksimal 3 sertifikasi.
+            </span> 
+          )}
+        </div>
+
         <Button className="ml-auto" onClick={handleSave}>
           Simpan & Lanjut ke Pengalaman
         </Button>
       </div>
+
     </div>
   )
 }
