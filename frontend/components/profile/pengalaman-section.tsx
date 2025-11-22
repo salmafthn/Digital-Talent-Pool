@@ -1,0 +1,198 @@
+"use client"
+
+import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
+import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
+import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Trash2, Plus } from "lucide-react"
+
+type Pengalaman = {
+  id: string
+  jenis: string
+  jabatan: string
+  namaPerusahaan: string
+  tanggalMulai: string
+  tanggalSelesai: string
+  bidangPekerjaan: string
+  deskripsi: string
+}
+
+export function PengalamanSection() {
+  const router = useRouter()
+  const [items, setItems] = useState<Pengalaman[]>([])
+  const [agree, setAgree] = useState(false)
+
+  useEffect(() => {
+    const raw = typeof window !== "undefined" ? localStorage.getItem("profilePengalaman") : null
+    if (raw) {
+      try {
+        setItems(JSON.parse(raw))
+      } catch {}
+    }
+  }, [])
+
+  function addItem() {
+    setItems((prev) => [
+      ...prev,
+      {
+        id: Date.now().toString(),
+        jenis: "",
+        jabatan: "",
+        namaPerusahaan: "",
+        tanggalMulai: "",
+        tanggalSelesai: "",
+        bidangPekerjaan: "",
+        deskripsi: "",
+      },
+    ])
+  }
+
+  function updateItem<K extends keyof Pengalaman>(id: string, key: K, value: string) {
+    setItems((prev) => prev.map((item) => (item.id === id ? { ...item, [key]: value } : item)))
+  }
+
+  function deleteItem(id: string) {
+    setItems((prev) => prev.filter((item) => item.id !== id))
+  }
+
+  function handleSubmit() {
+    if (!agree) {
+      alert("Mohon centang pernyataan terlebih dahulu.")
+      return
+    }
+    localStorage.setItem("profilePengalaman", JSON.stringify(items))
+    const event = new CustomEvent("toast", {
+      detail: {
+        title: "Profil Berhasil Disimpan",
+        description: "Anda akan diarahkan ke chatbot untuk konsultasi kompetensi.",
+        duration: 3000,
+      },
+    })
+    window.dispatchEvent(event)
+    setTimeout(() => {
+      router.push("/chatbot")
+    }, 1000)
+  }
+
+  return (
+    <div className="space-y-6">
+      {items.map((item) => (
+        <div key={item.id} className="border rounded-lg p-4 space-y-4 bg-slate-50">
+          <div className="grid gap-4 sm:grid-cols-3">
+            <div>
+              <label className="text-sm font-medium">Jenis</label>
+              <select
+                value={item.jenis}
+                onChange={(e) => updateItem(item.id, "jenis", e.target.value)}
+                className="mt-1 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
+              >
+                <option value="">Pilih jenis</option>
+                <option value="Kerja">Kerja</option>
+                <option value="Magang">Magang</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-sm font-medium">Jabatan</label>
+              <Input
+                value={item.jabatan}
+                onChange={(e) => updateItem(item.id, "jabatan", e.target.value)}
+                placeholder="Nama jabatan"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Nama Perusahaan</label>
+              <Input
+                value={item.namaPerusahaan}
+                onChange={(e) => updateItem(item.id, "namaPerusahaan", e.target.value)}
+                placeholder="Nama perusahaan/organisasi"
+              />
+            </div>
+          </div>
+
+          {/* existing code */}
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className="text-sm font-medium">Tanggal Mulai</label>
+              <Input
+                type="date"
+                value={item.tanggalMulai}
+                onChange={(e) => updateItem(item.id, "tanggalMulai", e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Tanggal Selesai</label>
+              <Input
+                type="date"
+                value={item.tanggalSelesai}
+                onChange={(e) => updateItem(item.id, "tanggalSelesai", e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="text-sm font-medium">Bidang Pekerjaan / Area Fungsi</label>
+            <select
+              value={item.bidangPekerjaan}
+              onChange={(e) => updateItem(item.id, "bidangPekerjaan", e.target.value)}
+              className="mt-1 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
+            >
+              <option value="">Pilih bidang pekerjaan</option>
+              <option value="Data Science & Cloud">Data Science & Cloud</option>
+              <option value="Tata Kelola TI">Tata Kelola TI</option>
+              <option value="Cybersecurity">Cybersecurity</option>
+              <option value="PPD">PPD</option>
+              <option value="Teknologi Informasi">Teknologi Informasi</option>
+              <option value="Layanan TI">Layanan TI</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="text-sm font-medium">Deskripsi (Tugas & Tanggung Jawab)</label>
+            <Textarea
+              value={item.deskripsi}
+              onChange={(e) => updateItem(item.id, "deskripsi", e.target.value)}
+              placeholder="Deskripsikan pekerjaan dan tanggung jawab Anda"
+              rows={3}
+            />
+          </div>
+
+          <div className="flex justify-end">
+            <Button variant="outline" size="sm" onClick={() => deleteItem(item.id)}>
+              <Trash2 className="h-4 w-4 mr-2" />
+              Hapus
+            </Button>
+          </div>
+        </div>
+      ))}
+
+      <div className="flex gap-3 pb-6">
+        <Button variant="outline" onClick={addItem}>
+          <Plus className="h-4 w-4 mr-2" />
+          Tambah Pengalaman
+        </Button>
+      </div>
+
+      <div className="space-y-4 border-t pt-6">
+        <label className="flex items-start gap-3 text-sm text-foreground cursor-pointer">
+          <Checkbox
+            id="agree"
+            checked={agree}
+            onCheckedChange={(checked) => setAgree(checked as boolean)}
+            className="mt-1 h-5 w-5 border-2 border-gray-300"
+          />
+          <span className="leading-relaxed">
+            Dengan mencentang kolom ini, saya menyatakan telah mengisi data dengan sebenar-benarnya.
+          </span>
+        </label>
+
+        <div className="flex justify-end pt-2">
+          <Button onClick={handleSubmit} disabled={!agree}>
+            Submit Profil & Lanjut ke Chatbot
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}

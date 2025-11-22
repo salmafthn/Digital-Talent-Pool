@@ -127,3 +127,42 @@ def delete_experience(
     db: Session = Depends(get_db)
 ):
     return service.delete_experience(db, current_user.id, exp_id)
+
+## --- AVATAR ---
+@router.post("/avatar", response_model=profile_schema.ProfileFullResponse)
+async def upload_avatar(
+    file: UploadFile = File(...),
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    # 1. Validasi Tipe File (Hanya Gambar)
+    allowed_types = ["image/jpeg", "image/png", "image/webp"]
+    if file.content_type not in allowed_types:
+        raise HTTPException(status_code=400, detail="Format file harus JPG, PNG, atau WebP")
+
+    # 2. Siapkan Folder Penyimpanan
+    # Kita buat folder khusus 'avatars' di dalam 'uploads'
+    upload_dir = "uploads/avatars"
+    os.makedirs(upload_dir, exist_ok=True)
+
+    # 3. Generate Nama File Unik
+    # Tips: Kita pakai user_id di nama file biar gampang dilacak, tapi tetap pakai UUID biar unik
+    file_extension = file.filename.split(".")[-1]
+    unique_filename = f"user_{current_user.id}_{uuid.uuid4()}.{file_extension}"
+    file_path = f"{upload_dir}/{unique_filename}"
+    
+    # 4. Simpan File Fisik
+    try:
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Gagal menyimpan file: {str(e)}")
+
+    # 5. Update Database (URL)
+    # Ingat: Folder 'uploads' sudah di-mount ke URL '/static' di main.py
+    file_url = f"/static/avatars/{unique_filename}"
+    
+    # Kita gunakan service update_profile yang sudah ada
+    update_data = profile_schema.ProfileUpdate(avatar_url=file_url)
+    
+    return service.update_profile(db, current_user.id, update_data) 

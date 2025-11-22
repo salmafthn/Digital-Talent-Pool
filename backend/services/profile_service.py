@@ -25,7 +25,7 @@ class ProfileService:
         db.refresh(profile)
         return profile
 
-    # 3. Tambah Pendidikan
+## -- EDUCATION --
     def add_education(self, db: Session, user_id: int, education: profile_schema.EducationCreate):
         profile = self.get_profile_by_user_id(db, user_id)
         
@@ -83,6 +83,7 @@ class ProfileService:
         db.commit()
         return {"message": "Certification deleted successfully"}
 
+## -- EXPERIENCE --
     def add_experience(self, db: Session, user_id: int, exp: profile_schema.ExperienceCreate):
         profile = self.get_profile_by_user_id(db, user_id)
         new_exp = models.Experience(**exp.dict(), profile_id=profile.id)
@@ -90,6 +91,7 @@ class ProfileService:
         db.commit()
         db.refresh(new_exp)
         return new_exp
+    
     def delete_experience(self, db: Session, user_id: int, exp_id: int):
         profile = self.get_profile_by_user_id(db, user_id)
         
@@ -105,3 +107,14 @@ class ProfileService:
         db.delete(exp)
         db.commit()
         return {"message": "Experience deleted successfully"}
+
+## -- AVATAR --
+    def remove_avatar(self, db: Session, user_id: int):
+        profile = self.get_profile_by_user_id(db, user_id)
+        
+        # Set url jadi null
+        profile.avatar_url = None
+        
+        db.commit()
+        db.refresh(profile)
+        return profile
