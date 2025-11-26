@@ -114,11 +114,18 @@ export function SertifikasiSection({ onNext }: Props) {
 
           <div>
             <label className="text-sm font-medium">Keterangan</label>
+            <p className="mt-1 text-xs text-slate-500">
+                Contoh: Sertifikasi Cloud Practitioner yang mencakup pengenalan layanan cloud,
+                keamanan, pengelolaan resource, dan arsitektur dasar. Selama program, saya
+                mengerjakan latihan konfigurasi server, membuat storage bucket, dan
+                mensimulasikan deployment aplikasi sederhana.
+            </p>
             <Textarea
+              className="mt-2"
               value={item.keterangan}
               onChange={(e) => updateItem(item.id, "keterangan", e.target.value)}
-              placeholder="Deskripsi singkat"
-              rows={2}
+              placeholder="Tuliskan ringkasan kegiatan, materi yang dipelajari, dan peran Anda selama program."
+              rows={3}
             />
           </div>
 

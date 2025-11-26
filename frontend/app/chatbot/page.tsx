@@ -32,7 +32,7 @@ const seedMessages: Message[] = [
     text: "Bagus! Dengan pengalaman tersebut, saya merekomendasikan Anda untuk mengikuti assessment lebih lanjut guna memvalidasi level yang sudah saya petakan di beberapa area fungsi TI. Hasilnya akan membantu Anda menemukan jalur karir yang paling sesuai.",
     kind: "invite",
   },
-];
+]
 
 export default function ChatbotPage() {
   const router = useRouter()
@@ -74,9 +74,9 @@ export default function ChatbotPage() {
       const botReply: Message = {
         id: messages.length + 2,
         role: "ai",
-        text: "Terima kasih atas informasinya. Untuk mendapatkan penilaian yang akurat, saya merekomendasikan Anda segera mengikuti assessment untuk memvalidasi level kompetensi Anda di berbagai area fungsi TI. Silahkan klik tombol dibawah ini untuk melihat pemetaan level anda!",
+        text: "Terima kasih atas informasinya. Untuk mendapatkan penilaian yang akurat, saya merekomendasikan Anda segera mengikuti assessment untuk memvalidasi level kompetensi Anda di berbagai area fungsi TI. Silahkan klik tombol dibawah ini untuk melihat pemetaan level anda! ",
         kind: "invite",
-      };
+      }
       setMessages((prev) => [...prev, botReply])
     }, 500)
   }
