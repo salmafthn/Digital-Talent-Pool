@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import { ChevronDown, X } from "lucide-react"
 
 type DataDiriForm = {
   nik: string
@@ -18,6 +19,7 @@ type DataDiriForm = {
   portofolio: string
   alamat: string
   tentang: string
+  keterampilan: string[]
 }
 
 type LockedFields = {
@@ -33,6 +35,43 @@ interface Props {
   onNext: () => void
 }
 
+// daftar skill dari kamu
+const SKILL_OPTIONS: string[] = [
+  "software development",
+  "requirements analysis",
+  "software optimization",
+  "usability",
+  "performance tuning",
+  "maintainability",
+  "backend development",
+  "system design",
+  "scalability",
+  "collaboration",
+  "teamwork",
+  "security",
+  "reliability",
+  "clean code",
+  "code efficiency",
+  "code review",
+  "best practices",
+  "error handling",
+  "monitoring",
+  "continuous learning",
+  "backend design",
+  "quality assurance",
+  "problem solving",
+  "service maintenance",
+  "service optimization",
+  "java programming",
+  "object oriented programming",
+  "communication",
+  "english proficiency",
+  "sql",
+  "api development",
+  "microservices architecture",
+  "service oriented architecture",
+]
+
 export function DataDiriSection({ locked, onLock, onNext }: Props) {
   const [form, setForm] = useState<DataDiriForm>({
     nik: "",
@@ -46,19 +85,52 @@ export function DataDiriSection({ locked, onLock, onNext }: Props) {
     portofolio: "",
     alamat: "",
     tentang: "",
+    keterampilan: [],
   })
 
+  const [skillsOpen, setSkillsOpen] = useState(false)
+
   useEffect(() => {
-    const raw = typeof window !== "undefined" ? localStorage.getItem("profileDataDiri") : null
+    const raw =
+      typeof window !== "undefined" ? localStorage.getItem("profileDataDiri") : null
     if (raw) {
       try {
-        setForm(JSON.parse(raw))
-      } catch {}
+        const parsed = JSON.parse(raw) as Partial<DataDiriForm>
+        setForm((prev) => ({
+          ...prev,
+          ...parsed,
+          keterampilan: Array.isArray(parsed.keterampilan)
+            ? parsed.keterampilan
+            : [],
+        }))
+      } catch {
+        // abaikan error parse
+      }
     }
   }, [])
 
-  function handleChange<K extends keyof DataDiriForm>(key: K, value: string) {
-    setForm((prev) => ({ ...prev, [key]: value }))
+  function handleChange<K extends keyof DataDiriForm>(
+    key: K,
+    value: DataDiriForm[K] extends string[] ? never : string,
+  ) {
+    setForm((prev) => ({ ...prev, [key]: value as string }))
+  }
+
+  function toggleSkill(skill: string) {
+    setForm((prev) => {
+      const exists = prev.keterampilan.includes(skill)
+      const keterampilan = exists
+        ? prev.keterampilan.filter((s) => s !== skill)
+        : [...prev.keterampilan, skill]
+      return { ...prev, keterampilan }
+    })
+  }
+
+  function removeSkill(skill: string) {
+    setForm((prev) => ({
+      ...prev,
+      keterampilan: prev.keterampilan.filter((s) => s !== skill),
+    }))
   }
 
   function handleSave() {
@@ -87,7 +159,11 @@ export function DataDiriSection({ locked, onLock, onNext }: Props) {
             className={cn(locked.nik && readOnlyCls)}
             placeholder="Nomor Induk Kependudukan"
           />
-          {locked.nik && <p className="mt-1 text-xs text-slate-500">Field ini tidak dapat diubah setelah disimpan.</p>}
+          {locked.nik && (
+            <p className="mt-1 text-xs text-slate-500">
+              Field ini tidak dapat diubah setelah disimpan.
+            </p>
+          )}
         </div>
         <div>
           <label className="text-sm font-medium">
@@ -100,7 +176,11 @@ export function DataDiriSection({ locked, onLock, onNext }: Props) {
             className={cn(locked.nama && readOnlyCls)}
             placeholder="Masukkan nama lengkap"
           />
-          {locked.nama && <p className="mt-1 text-xs text-slate-500">Field ini tidak dapat diubah setelah disimpan.</p>}
+          {locked.nama && (
+            <p className="mt-1 text-xs text-slate-500">
+              Field ini tidak dapat diubah setelah disimpan.
+            </p>
+          )}
         </div>
       </div>
 
@@ -124,7 +204,9 @@ export function DataDiriSection({ locked, onLock, onNext }: Props) {
             <option value="Lainnya">Lainnya</option>
           </select>
           {locked.gender && (
-            <p className="mt-1 text-xs text-slate-500">Field ini tidak dapat diubah setelah disimpan.</p>
+            <p className="mt-1 text-xs text-slate-500">
+              Field ini tidak dapat diubah setelah disimpan.
+            </p>
           )}
         </div>
         <div>
@@ -139,7 +221,9 @@ export function DataDiriSection({ locked, onLock, onNext }: Props) {
             className={cn(locked.tanggalLahir && readOnlyCls)}
           />
           {locked.tanggalLahir && (
-            <p className="mt-1 text-xs text-slate-500">Field ini tidak dapat diubah setelah disimpan.</p>
+            <p className="mt-1 text-xs text-slate-500">
+              Field ini tidak dapat diubah setelah disimpan.
+            </p>
           )}
         </div>
       </div>
@@ -156,7 +240,11 @@ export function DataDiriSection({ locked, onLock, onNext }: Props) {
         </div>
         <div>
           <label className="text-sm font-medium">No. WhatsApp</label>
-          <Input value={form.wa} onChange={(e) => handleChange("wa", e.target.value)} placeholder="Nomor WhatsApp" />
+          <Input
+            value={form.wa}
+            onChange={(e) => handleChange("wa", e.target.value)}
+            placeholder="Nomor WhatsApp"
+          />
         </div>
       </div>
 
@@ -207,8 +295,73 @@ export function DataDiriSection({ locked, onLock, onNext }: Props) {
         />
       </div>
 
+      {/* Keterampilan */}
+      <div className="relative">
+        <label className="text-sm font-medium">
+          Keterampilan
+        </label>
+        <p className="mt-1 text-xs text-slate-500">
+          Pilih beberapa keterampilan yang paling menggambarkan profilmu.
+        </p>
+
+        {/* Box chips + dropdown trigger */}
+        <div
+          className="mt-2 min-h-[44px] w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm flex items-center gap-2 flex-wrap cursor-pointer"
+          onClick={() => setSkillsOpen((o) => !o)}
+        >
+          {form.keterampilan.length === 0 && (
+            <span className="text-xs text-slate-400">
+              Pilih keterampilan dari daftar
+            </span>
+          )}
+
+          {form.keterampilan.map((skill) => (
+            <span
+              key={skill}
+              className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-800"
+            >
+              {skill}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  removeSkill(skill)
+                }}
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </span>
+          ))}
+
+          <span className="ml-auto">
+            <ChevronDown className="h-4 w-4 text-slate-500" />
+          </span>
+        </div>
+
+        {skillsOpen && (
+          <div className="absolute z-20 mt-1 max-h-64 w-full overflow-auto rounded-md border bg-white shadow-lg">
+            {SKILL_OPTIONS.map((skill) => {
+              const selected = form.keterampilan.includes(skill)
+              return (
+                <button
+                  key={skill}
+                  type="button"
+                  onClick={() => toggleSkill(skill)}
+                  className={cn(
+                    "w-full text-left px-3 py-2 text-xs hover:bg-slate-50",
+                    selected && "bg-blue-50 text-blue-700 font-medium",
+                  )}
+                >
+                  {skill}
+                </button>
+              )
+            })}
+          </div>
+        )}
+      </div>
+
       <div className="pt-2 flex justify-end">
-        <Button onClick={handleSave}>Simpan & Lanjut ke Pendidikan</Button>
+        <Button onClick={handleSave}>Simpan &amp; Lanjut ke Pendidikan</Button>
       </div>
     </div>
   )
