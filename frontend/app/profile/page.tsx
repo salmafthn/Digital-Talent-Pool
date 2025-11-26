@@ -56,7 +56,7 @@ export default function ProfilePage() {
               <TabsList className="grid grid-cols-2 sm:grid-cols-4 mb-6 w-full">
                 <TabsTrigger value="data-diri">Data Diri</TabsTrigger>
                 <TabsTrigger value="pendidikan">Pendidikan</TabsTrigger>
-                <TabsTrigger value="sertifikasi">Sertifikasi</TabsTrigger>
+                <TabsTrigger value="sertifikasi">Pelatihan dan Sertifikasi</TabsTrigger>
                 <TabsTrigger value="pengalaman">Pengalaman</TabsTrigger>
               </TabsList>
 
