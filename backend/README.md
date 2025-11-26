@@ -1,6 +1,6 @@
  # DTP Backend API
 
-Backend ini dibangun menggunakan Python (FastAPI) dengan arsitektur Modular Monolith. Sistem menggunakan PostgreSQL sebagai database utama (via SQLAlchemy), Google Gemini untuk fitur AI Chat, dan sistem manajemen file statis untuk upload dokumen/gambar.
+Backend ini dibangun menggunakan Python (FastAPI). Sistem menggunakan PostgreSQL sebagai database utama (via SQLAlchemy), Google Gemini untuk fitur AI Chat, dan sistem manajemen file statis untuk upload dokumen/gambar.
 
 ## Prasyarat Sistem
 
@@ -112,8 +112,3 @@ backend/
 
       - Chatbot menggunakan Google Gemini 2.5 Flash.
       - Mocking service untuk integrasi dengan sistem eksternal (Tim 3).
-
-<!-- end list -->
-
-```
-```
