@@ -3,9 +3,9 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from database import engine, Base
-from routers import auth, profile
-import models
+from app.core.db import engine, Base
+from app.api.main import api_router, profile
+from app import models
 import os
 
 Base.metadata.create_all(bind=engine)
@@ -74,8 +74,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         content={"detail": errors, "message": "Terjadi kesalahan validasi data"}
     )
 
-app.include_router(auth.router)
-app.include_router(profile.router)
+app.include_router(api_router)
 
 @app.get("/")
 def root():

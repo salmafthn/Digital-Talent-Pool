@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
-import models
-from schemas import profile_schema
+from app import models
+from app.schemas import profile_schema
 from fastapi import HTTPException
 
 

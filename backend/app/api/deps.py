@@ -1,15 +1,23 @@
+from typing import Generator
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-from jose import JWTError, jwt
+from jose import jwt, JWTError
 from sqlalchemy.orm import Session
-from database import get_db
-from services.auth_service import SECRET_KEY, ALGORITHM
-import models
 
-# Ini mendefinisikan bahwa token dikirim lewat Header Authorization: Bearer <token>
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
+# Update Import: Ambil dari lokasi baru
+from app.core.db import get_db
+from app.core.security import SECRET_KEY, ALGORITHM
+from app import models
 
-def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+# Definisikan tokenUrl sesuai struktur router baru (tanpa prefix /api jika di-mount di root, 
+# tapi biasanya di main.py kita mount api_router. Jadi sesuaikan path loginnya)
+# Jika login ada di /auth/login, maka:
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
+
+def get_current_user(
+    token: str = Depends(oauth2_scheme), 
+    db: Session = Depends(get_db)
+) -> models.User:
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -17,7 +25,7 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     )
     
     try:
-        # 1. Decode Token
+        # Decode Token
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         email: str = payload.get("sub")
         if email is None:
@@ -25,7 +33,7 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     except JWTError:
         raise credentials_exception
     
-    # 2. Cari User di Database berdasarkan email dari token
+    # Cari user di Database
     user = db.query(models.User).filter(models.User.email == email).first()
     if user is None:
         raise credentials_exception
