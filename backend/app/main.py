@@ -1,23 +1,28 @@
-from fastapi import FastAPI, HTTPException, Request, status
+from fastapi import FastAPI, Request, status
 from fastapi.staticfiles import StaticFiles
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from app.core.db import engine, Base
-from app.api.main import api_router, profile
-from app import models
 import os
 
+# --- UPDATE IMPORT DI SINI ---
+from app.core.db import engine, Base  # Ambil dari app.core.db
+from app.api.main import api_router   # Ambil Router Utama dari app.api.main
+from app import models                # Ambil models dari app
+
+# Create Tables
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="DTP Backend API")
 
+# Setup Folder Uploads
 os.makedirs("uploads/certifications", exist_ok=True)
 os.makedirs("uploads/avatars", exist_ok=True)
- 
-app.mount("/static", StaticFiles(directory="uploads"), name="static")
+
+# Mount Static Files
 app.mount("/static", StaticFiles(directory="uploads"), name="static")
 
+# Setup CORS
 origins = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
@@ -31,6 +36,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Custom Error Handler (Bahasa Indonesia)
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     errors = []
@@ -45,7 +51,8 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         "password": "Password",
         "username": "Username",
         "faculty": "Fakultas",
-        "final_project_title": "Judul Tugas Akhir"
+        "final_project_title": "Judul Tugas Akhir",
+        "job_type": "Jenis Pekerjaan"
     }
 
     for error in exc.errors():
@@ -53,8 +60,8 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         readable_field = field_translations.get(str(field_name), str(field_name))
         
         error_type = error["type"]
-        input_value = error.get("input") # Ambil nilai yang dikirim user
- 
+        input_value = error.get("input")
+
         if error_type == "missing" or input_value is None:
             msg = f"Tolong input {readable_field} (wajib diisi)"
         elif "type" in error_type:
@@ -74,6 +81,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         content={"detail": errors, "message": "Terjadi kesalahan validasi data"}
     )
 
+# --- PASANG ROUTER UTAMA ---
 app.include_router(api_router)
 
 @app.get("/")

@@ -6,6 +6,8 @@ from typing import Any
 from app import crud, schemas, models
 from app.api import deps
 from app.core import security
+from app.core.db import get_db  # Ambil dari core/db.py
+from app import models
 
 
 router = APIRouter()
