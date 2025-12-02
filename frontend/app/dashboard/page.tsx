@@ -13,7 +13,7 @@ export default function DashboardPage() {
   const router = useRouter()
   const mapping = useMapping()
 
-  // 🔹 Batasi area fungsi yang dipakai di dashboard jadi 3 saja
+  // Hanya tampilkan 3 area di dashboard
   const areaKeys = ["DSC", "TKTI", "CYBER"] as (keyof typeof mapping)[]
   const [activeKey, setActiveKey] = useState<(typeof areaKeys)[number]>("DSC")
 
@@ -29,23 +29,13 @@ export default function DashboardPage() {
     setActiveKey(keys[(currentIdx + 1) % keys.length])
   }
 
-  const handleGoToProfile = () => {
-    router.push("/profile")
-  }
-
-  const handleGoToAssessment = () => {
+  const handleGoToProfile = () => router.push("/profile")
+  const handleGoToAssessment = () =>
     router.push(`/assessment?area=${encodeURIComponent(activeKey)}`)
-  }
-
-  const handleProbing = () => {
-    router.push("/chatbot")
-  }
-
-  const handleGoToDTS = () => {
+  const handleGoToDTS = () =>
     window.open("https://digitalent.kominfo.go.id", "_blank")
-  }
 
-  // List judul materi rekomendasi (bisa diubah sesuai kebutuhan)
+  // Rekomendasi pembelajaran (dummy)
   const recommendedMaterials: string[] = [
     "Dasar Data Science",
     "Python untuk Analisis Data",
@@ -54,6 +44,9 @@ export default function DashboardPage() {
     "Data Visualization",
     "Deployment Model",
   ]
+
+  // Profil tidak bisa dimapping kalau masih Unassessed & level = 0
+  const isUnmappable = active.status === "Unassessed" && active.level === 0
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -103,6 +96,7 @@ export default function DashboardPage() {
 
           {/* Active Area Panel */}
           <div className="bg-white rounded-2xl shadow-md p-4 sm:p-6 md:p-8">
+            {/* === CASE 1: Assessed === */}
             {active.status === "Assessed" ? (
               <div className="space-y-6">
                 {/* Header level + status */}
@@ -114,22 +108,24 @@ export default function DashboardPage() {
                     <h2 className="text-lg sm:text-2xl font-semibold">{active.area}</h2>
                   </div>
                   <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-3 py-1 text-xs font-semibold whitespace-nowrap">
-                    Assessted
+                    Assessed
                   </span>
                 </div>
 
-                {/* Progress bar */}
-                <div className="flex items-center gap-3">
-                  <div className="flex-1 h-2 rounded-full bg-slate-200 overflow-hidden">
-                    <div
-                      className="h-2 bg-blue-600 rounded-full transition-all"
-                      style={{ width: `${active.progress}%` }}
-                    />
+                {/* Progress bar – hidden, bisa dihidupkan lagi kalau perlu */}
+                {false && (
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1 h-2 rounded-full bg-slate-200 overflow-hidden">
+                      <div
+                        className="h-2 bg-blue-600 rounded-full transition-all"
+                        style={{ width: `${active.progress}%` }}
+                      />
+                    </div>
+                    <span className="text-xs text-slate-500 whitespace-nowrap">
+                      {active.progress}%
+                    </span>
                   </div>
-                  <span className="text-xs text-slate-500 whitespace-nowrap">
-                    {active.progress}%
-                  </span>
-                </div>
+                )}
 
                 {/* Rekomendasi Pembelajaran (bullet points) */}
                 <div className="space-y-3">
@@ -146,8 +142,9 @@ export default function DashboardPage() {
                   </ul>
 
                   <p className="text-xs text-slate-500 leading-relaxed">
-                    Lakukan pembelajaran sebelum melakukan upgrade level. Kamu dapat mengakses
-                    DTS untuk melihat beberapa pembelajaran yang mungkin cocok dengan profilmu.
+                    Lakukan pembelajaran sebelum melakukan upgrade level. Kamu
+                    dapat mengakses DTS untuk melihat beberapa pembelajaran yang
+                    mungkin cocok dengan profilmu.
                   </p>
                 </div>
 
@@ -164,46 +161,78 @@ export default function DashboardPage() {
                     className="sm:flex-1 rounded-full font-semibold"
                     onClick={handleGoToProfile}
                   >
-                    Update Profil
+                     Upgrade Level
                   </Button>
                 </div>
               </div>
             ) : (
-              // Non-assessted area
-              <div className="space-y-4">
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-6 border-b gap-4">
-                  <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
-                    <span className="inline-flex items-center rounded-full bg-blue-100 text-blue-700 px-3 py-1 text-xs font-semibold">
-                      LEVEL {active.level}
-                    </span>
-                    <h2 className="text-lg sm:text-2xl font-semibold">{active.area}</h2>
+              /* === CASE 2: Unassessed === */
+              <>
+                {isUnmappable ? (
+                  /* 2A. Profil tidak bisa dimapping (level 0) */
+                  <div className="space-y-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-6 border-b gap-4">
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+                        {/* Tidak tampilkan level karena belum terpetakan */}
+                        <h2 className="text-lg sm:text-2xl font-semibold">
+                          {active.area}
+                        </h2>
+                      </div>
+                      <span className="inline-flex items-center rounded-full bg-gray-200 text-gray-700 px-3 py-1 text-xs font-semibold">
+                        Belum Terpetakan
+                      </span>
+                    </div>
+
+                    <p className="text-sm text-slate-600 leading-relaxed">
+                      Mohon maaf, profilmu saat ini belum dapat dipetakan ke area
+                      fungsi dan level manapun. Coba lengkapi atau perbarui data
+                      profilmu, dan pertimbangkan untuk mengikuti pelatihan atau
+                      sertifikasi yang relevan sebelum melakukan assessment
+                      kembali.
+                    </p>
+
+                    <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t">
+                      <Button
+                        className="sm:flex-1 rounded-full font-semibold"
+                        onClick={handleGoToProfile}
+                      >
+                        Perbarui Profil
+                      </Button>
+                    </div>
                   </div>
-                  <span className="inline-flex items-center rounded-full bg-gray-200 text-gray-700 px-3 py-1 text-xs font-semibold">
-                    Unassessted
-                  </span>
-                </div>
+                ) : (
+                  /* 2B. Unassessed biasa (masih bisa assessment) */
+                  <div className="space-y-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-6 border-b gap-4">
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+                        <span className="inline-flex items-center rounded-full bg-blue-100 text-blue-700 px-3 py-1 text-xs font-semibold">
+                          LEVEL {active.level}
+                        </span>
+                        <h2 className="text-lg sm:text-2xl font-semibold">
+                          {active.area}
+                        </h2>
+                      </div>
+                      <span className="inline-flex items-center rounded-full bg-gray-200 text-gray-700 px-3 py-1 text-xs font-semibold">
+                        Unassessed
+                      </span>
+                    </div>
 
-                <p className="text-sm text-slate-600">
-                  {active.notes ||
-                    "Perlu assessment untuk validasi level dan rekomendasi lanjutan."}
-                </p>
+                    <p className="text-sm text-slate-600">
+                      {active.notes ||
+                        "Perlu assessment untuk validasi level dan rekomendasi lanjutan."}
+                    </p>
 
-                <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t">
-                  <Button
-                    className="sm:flex-1 rounded-full font-semibold"
-                    onClick={handleGoToAssessment}
-                  >
-                    Go to Assessment
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="sm:flex-1 rounded-full font-semibold"
-                    onClick={handleProbing}
-                  >
-                    Probing
-                  </Button>
-                </div>
-              </div>
+                    <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t">
+                      <Button
+                        className="sm:flex-1 rounded-full font-semibold"
+                        onClick={handleGoToAssessment}
+                      >
+                        Go to Assessment
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>
