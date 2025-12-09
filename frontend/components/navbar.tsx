@@ -1,47 +1,62 @@
-"use client"
+"use client";
 
-import Link from "next/link"
-import Image from "next/image"
-import { usePathname, useRouter } from "next/navigation"
-import { useEffect, useState } from "react"
-import { Button } from "@/components/ui/button"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
-import { Menu, X } from "lucide-react"
+import Link from "next/link";
+import Image from "next/image";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import { Menu, X } from "lucide-react";
 
-type User = { name?: string; email?: string; photoUrl?: string }
+type User = { name?: string; email?: string; photoUrl?: string };
 
 export default function Navbar() {
-  const pathname = usePathname()
-  const router = useRouter()
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
-  const [user, setUser] = useState<User | null>(null)
+  const pathname = usePathname();
+  const router = useRouter();
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
 
   useEffect(() => {
-    const raw = localStorage.getItem("user")
-    const photoUrl = localStorage.getItem("profilePhotoUrl")
+    if (typeof window === "undefined") return;
+
+    const raw = localStorage.getItem("user");
+    const photoUrl = localStorage.getItem("profilePhotoUrl");
+
     if (raw) {
       try {
-        const parsed = JSON.parse(raw)
-        setUser({ ...parsed, photoUrl: photoUrl || parsed.photoUrl })
-      } catch {}
+        const parsed = JSON.parse(raw);
+        setUser({ ...parsed, photoUrl: photoUrl || parsed.photoUrl });
+      } catch {
+        // ignore
+      }
     } else if (photoUrl) {
-      setUser({ name: "Pengguna", photoUrl })
+      setUser({ name: "Pengguna", photoUrl });
     }
 
     function onStorage(e: StorageEvent) {
-      if ((e.key === "user" || e.key === "profilePhotoUrl") && e.newValue) {
+      if (e.key === "user" && e.newValue) {
         try {
-          const userData = e.key === "user" ? JSON.parse(e.newValue) : { name: "Pengguna" }
-          const photo = e.key === "profilePhotoUrl" ? e.newValue : undefined
-          setUser((prev) => ({ ...prev, ...userData, photoUrl: photo || prev?.photoUrl }))
-        } catch {}
+          const userData = JSON.parse(e.newValue);
+          setUser((prev) => ({ ...prev, ...userData }));
+        } catch {
+          // ignore
+        }
+      }
+
+      if (e.key === "profilePhotoUrl" && e.newValue) {
+        setUser((prev) => ({ ...prev, photoUrl: e.newValue || prev?.photoUrl }));
       }
     }
 
-    window.addEventListener("storage", onStorage)
-    return () => window.removeEventListener("storage", onStorage)
-  }, [])
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
 
   const navLinks = [
     { href: "/", label: "Home" },
@@ -50,23 +65,39 @@ export default function Navbar() {
     { href: "#", label: "Mentor Class" },
     { href: "#", label: "Perusahaan" },
     { href: "#", label: "Tentang" },
-  ]
+  ];
 
   const handleLogout = () => {
-    localStorage.removeItem("user")
-    localStorage.removeItem("profilePhotoUrl")
-    setUser(null)
-    router.push("/login")
-  }
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("user");
+      localStorage.removeItem("profilePhotoUrl");
+      localStorage.removeItem("token");
+      localStorage.removeItem("profileDataDiri");
+      localStorage.removeItem("profilePendidikan");
+      localStorage.removeItem("profilePengalaman");
+      localStorage.removeItem("profileSertifikasi");
+      localStorage.removeItem("profileLocked");
+    }
 
-  const isAuthPage = pathname === "/login" || pathname === "/register" || pathname === "/"
+    setUser(null);
+    router.push("/login");
+  };
+
+  const isAuthPage =
+    pathname === "/login" || pathname === "/register" || pathname === "/";
 
   return (
     <nav className="sticky top-0 z-50 bg-white shadow-sm h-16">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-10">
         <div className="flex justify-between items-center h-16">
           <Link href="/" className="flex items-center h-10 flex-shrink-0">
-            <Image src="/logos/diploy.png" alt="Diploy" width={140} height={40} className="object-contain" />
+            <Image
+              src="/logos/diploy.png"
+              alt="Diploy"
+              width={140}
+              height={40}
+              className="object-contain"
+            />
           </Link>
 
           <div className="hidden md:flex items-center gap-8">
@@ -75,7 +106,9 @@ export default function Navbar() {
                 key={link.href}
                 href={link.href}
                 className={`text-sm font-medium transition-colors ${
-                  pathname === link.href ? "text-blue-600" : "text-gray-800 hover:text-blue-600"
+                  pathname === link.href
+                    ? "text-blue-600"
+                    : "text-gray-800 hover:text-blue-600"
                 }`}
               >
                 {link.label}
@@ -95,16 +128,29 @@ export default function Navbar() {
                 <DropdownMenuTrigger asChild>
                   <button className="flex items-center gap-2 rounded-full border px-2 py-1.5 hover:bg-gray-50 transition">
                     <Avatar className="h-8 w-8">
-                      <AvatarImage src={user.photoUrl || "/avatars/placeholder.png"} alt={user.name || "User"} />
-                      <AvatarFallback>P</AvatarFallback>
+                      <AvatarImage
+                        src={user.photoUrl || "/avatars/placeholder.png"}
+                        alt={user.name || "User"}
+                      />
+                      <AvatarFallback>
+                        {(user.name || "P").charAt(0).toUpperCase()}
+                      </AvatarFallback>
                     </Avatar>
-                    <span className="hidden sm:block text-sm font-medium text-gray-800">{user.name || "Pengguna"}</span>
+                    <span className="hidden sm:block text-sm font-medium text-gray-800">
+                      {user.name || "Pengguna"}
+                    </span>
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-40">
-                  <DropdownMenuItem onClick={() => router.push("/profile")}>Profil</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => router.push("/dashboard")}>Pelatihan</DropdownMenuItem>
-                  <DropdownMenuItem onClick={handleLogout}>Logout</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => router.push("/profile")}>
+                    Profil
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => router.push("/dashboard")}>
+                    Pelatihan
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleLogout}>
+                    Logout
+                  </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             ) : null}
@@ -114,7 +160,11 @@ export default function Navbar() {
               className="md:hidden p-2 hover:bg-gray-100 rounded-lg transition-colors"
               aria-label="Toggle menu"
             >
-              {isMobileMenuOpen ? <X className="w-6 h-6 text-gray-600" /> : <Menu className="w-6 h-6 text-gray-600" />}
+              {isMobileMenuOpen ? (
+                <X className="w-6 h-6 text-gray-600" />
+              ) : (
+                <Menu className="w-6 h-6 text-gray-600" />
+              )}
             </button>
           </div>
         </div>
@@ -127,7 +177,9 @@ export default function Navbar() {
                   key={link.href}
                   href={link.href}
                   className={`px-4 py-2 rounded-lg transition-colors ${
-                    pathname === link.href ? "bg-blue-50 text-blue-600" : "text-gray-800 hover:bg-gray-50"
+                    pathname === link.href
+                      ? "bg-blue-50 text-blue-600"
+                      : "text-gray-800 hover:bg-gray-50"
                   }`}
                   onClick={() => setIsMobileMenuOpen(false)}
                 >
@@ -135,7 +187,11 @@ export default function Navbar() {
                 </Link>
               ))}
               {isAuthPage && !user && (
-                <Link href="/login" className="px-4 py-2" onClick={() => setIsMobileMenuOpen(false)}>
+                <Link
+                  href="/login"
+                  className="px-4 py-2"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                >
                   <Button className="w-full rounded-full bg-blue-600 hover:bg-blue-700 text-white font-semibold">
                     Masuk
                   </Button>
@@ -146,5 +202,5 @@ export default function Navbar() {
         )}
       </div>
     </nav>
-  )
+  );
 }

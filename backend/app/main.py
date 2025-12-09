@@ -4,7 +4,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.db import engine, Base
-from app.api.main import api_router, profile
+from app.api.main import api_router #, profile
 from app import models
 import os
 
