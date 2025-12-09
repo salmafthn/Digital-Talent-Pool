@@ -1,0 +1,68 @@
+from pydantic import BaseModel
+from typing import Dict, List, Optional
+
+# --- A. SCHEMA INTERVIEW ---
+class InterviewRequest(BaseModel):
+    prompt: str
+
+class InterviewData(BaseModel):
+    answer: str
+
+class InterviewResponse(BaseModel):
+    success: bool
+    message: str
+    data: InterviewData
+
+# --- B. SCHEMA TALENT MAPPING ---
+class MappingRequest(BaseModel):
+    prompt: str  # Gabungan semua jawaban user
+
+class CompetencyLevel(BaseModel):
+    level_kompetensi: int
+    kecocokan: float
+
+# Karena key-nya spesifik (Tata Kelola TI, dll), kita definisikan fieldnya
+class MappingData(BaseModel):
+    Tata_Kelola_TI: Optional[CompetencyLevel] = None
+    Pengembangan_Produk_Digital: Optional[CompetencyLevel] = None
+    Sains_Data_Kecerdasan_Artifisial: Optional[CompetencyLevel] = None
+    Keamanan_Informasi_dan_Siber: Optional[CompetencyLevel] = None
+    Teknologi_dan_Infrastruktur: Optional[CompetencyLevel] = None
+    Layanan_TI: Optional[CompetencyLevel] = None
+
+    class Config:
+        # Mengizinkan field dengan spasi (Mapping manual key)
+        populate_by_name = True
+
+class MappingResponse(BaseModel):
+    success: bool
+    message: str
+    data: Dict[str, CompetencyLevel] # Kita buat Dict agar fleksibel menerima key dengan spasi
+
+# --- C. SCHEMA QUESTION GENERATION ---
+class QuestionRequest(BaseModel):
+    area_fungsi: str
+    level_kompetensi: int
+
+class QuestionOption(BaseModel):
+    a: str
+    b: str
+    c: str
+    d: str
+
+class QuestionItem(BaseModel):
+    nomor_soal: int
+    aspek_kritis: str
+    soal: str
+    opsi_jawaban: QuestionOption
+    jawaban_benar: str
+
+class QuestionData(BaseModel):
+    area_fungsi: str
+    level_kompetensi: int
+    kumpulan_soal: List[QuestionItem]
+
+class QuestionResponse(BaseModel):
+    success: bool
+    message: str
+    data: QuestionData

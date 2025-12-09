@@ -1,37 +1,45 @@
 import httpx
 import os
+from fastapi import HTTPException
+from dotenv import load_dotenv
+from app.schemas import ai_schema
+
+load_dotenv()
 
 class AIService:
     def __init__(self):
-        self.chat_url = os.getenv("TIM3_CHAT_URL")
-        self.mapping_url = os.getenv("TIM3_MAPPING_URL")
+        # Ambil URL Tim AI dari .env
+        self.base_url = os.getenv("TIM_AI_URL", "http://127.0.0.1:8001")
+    
+    async def _post_request(self, endpoint: str, payload: dict):
+        url = f"{self.base_url}{endpoint}"
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(url, json=payload, timeout=60.0) # Timeout 60 detik karena AI lama
+                response.raise_for_status()
+                return response.json()
+        except httpx.HTTPStatusError as e:
+            raise HTTPException(status_code=e.response.status_code, detail=f"AI Service Error: {e.response.text}")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Gagal menghubungi AI Service: {str(e)}")
 
-    async def get_chat_response(self, message: str, history: list):
-        if "mock" in self.chat_url:
-            return {
-                "reply": "Ini balasan Mocking. Tim 3 belum siap.",
-                "context_used": False
-            }
-        
-        async with httpx.AsyncClient() as client:
-            response = await client.post(self.chat_url, json={
-                "message": message,
-                "history": history
-            })
-            response.raise_for_status()
-            return response.json()
+    # A. INTERVIEW
+    async def get_interview_reply(self, prompt: str) -> ai_schema.InterviewResponse:
+        payload = {"prompt": prompt}
+        data = await self._post_request("/interview", payload)
+        return ai_schema.InterviewResponse(**data)
 
-    async def get_level_mapping(self, chat_history: list):
-        if "mock" in self.mapping_url:
-            return {
-                "level": "Associate (Level 5)",
-                "job_recommendation": "Data Scientist",
-                "confidence": 0.85
-            }
+    # B. TALENT MAPPING
+    async def analyze_talent_mapping(self, full_interview_text: str) -> ai_schema.MappingResponse:
+        payload = {"prompt": full_interview_text}
+        data = await self._post_request("/talent-mapping", payload)
+        return ai_schema.MappingResponse(**data)
 
-        async with httpx.AsyncClient() as client:
-            response = await client.post(self.mapping_url, json={
-                "history": chat_history
-            })
-            response.raise_for_status()
-            return response.json()
+    # C. GENERATE SOAL
+    async def generate_questions(self, area: str, level: int) -> ai_schema.QuestionResponse:
+        payload = {
+            "area_fungsi": area,
+            "level_kompetensi": level
+        }
+        data = await self._post_request("/question-generation", payload)
+        return ai_schema.QuestionResponse(**data)

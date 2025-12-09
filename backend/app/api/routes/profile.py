@@ -1,14 +1,22 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from app.core.db import get_db
-from app.schemas import profile_schema
+from app.schemas import profile_schema  
 from app.services.profile_service import ProfileService
 from app.api.deps import get_current_user
 from app import models
-import shutil
-import os
+from app.core.storage import minio_client, bucket_name # Import MinIO Client
 import uuid
+import os
+import io # Untuk handle file stream
 from datetime import date
+from app.schemas.profile_schema import (
+    EducationLevelEnum, 
+    GenderEnum, 
+    JobTypeEnum, 
+    FunctionalAreaEnum,
+    SKILL_OPTIONS
+)
 
 router = APIRouter(
     prefix="/profile",
@@ -17,14 +25,13 @@ router = APIRouter(
 
 service = ProfileService()
 
-# --- ENDPOINT UTAMA ---
+# --- ENDPOINT UTAMA (GET & UPDATE PROFILE) ---
 
 @router.get("/", response_model=profile_schema.ProfileFullResponse)
 def get_my_profile(
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    # Inject email dari tabel User ke response Profile
     profile = service.get_profile_by_user_id(db, current_user.id)
     profile.email = current_user.email 
     return profile
@@ -36,6 +43,56 @@ def update_my_profile(
     db: Session = Depends(get_db)
 ):
     return service.update_profile(db, current_user.id, data)
+
+# --- CONSTANTS & COMPLETENESS ---
+
+@router.get("/constants")
+def get_all_constants():
+    from app.schemas.profile_schema import EducationLevelEnum, GenderEnum, JobTypeEnum, FunctionalAreaEnum
+    return {
+        "genders": [e.value for e in GenderEnum],
+        "education_levels": [e.value for e in EducationLevelEnum],
+        "job_types": [e.value for e in JobTypeEnum],
+        "functional_areas": [e.value for e in FunctionalAreaEnum],
+        "skills": SKILL_OPTIONS
+    }
+
+@router.get("/completeness")
+def get_profile_completeness(
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    profile = service.get_profile_by_user_id(db, current_user.id)
+    score = 0
+    missing_fields = []
+
+    if profile.phone and profile.address and profile.bio:
+        score += 25
+    else:
+        missing_fields.append("Lengkapi No HP, Alamat, dan Bio")
+
+    if profile.avatar_url:
+        score += 15
+    else:
+        missing_fields.append("Upload Foto Profil")
+
+    if profile.educations:
+        score += 30
+    else:
+        missing_fields.append("Tambahkan minimal 1 Riwayat Pendidikan")
+
+    if profile.experiences or profile.certifications:
+        score += 30
+    else:
+        missing_fields.append("Tambahkan minimal 1 Pengalaman Kerja atau Sertifikasi")
+
+    is_ready_for_assessment = score >= 80
+
+    return {
+        "percentage": score,
+        "is_ready_for_assessment": is_ready_for_assessment,
+        "missing_items": missing_fields
+    }
 
 # --- SUB-MODULE: EDUCATION ---
 
@@ -55,42 +112,60 @@ def delete_education(
 ):
     return service.delete_education(db, current_user.id, edu_id)
 
-# --- SUB-MODULE: CERTIFICATION ---
+# --- SUB-MODULE: CERTIFICATION (MINIO UPDATED) ---
 
 @router.post("/certification", response_model=profile_schema.CertificationResponse)
-async def add_certification(    
+async def add_certification(
     name: str = Form(..., min_length=3),
     organizer: str = Form(..., min_length=3),
     year: int = Form(...),
     description: str = Form(..., min_length=5),
-    file: UploadFile = File(...), # Wajib Upload File
+    file: UploadFile = File(...),
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
-): 
-
+):
+    # 1. Validasi Tahun
     current_year = date.today().year
     if not (current_year - 5 <= year <= current_year + 5):
         raise HTTPException(
             status_code=400, 
             detail=f"Tahun sertifikasi harus antara {current_year - 5} dan {current_year + 5}"
         )
- 
+
+    # 2. Validasi Tipe File
     allowed_types = ["image/jpeg", "image/png", "application/pdf"]
     if file.content_type not in allowed_types:
         raise HTTPException(status_code=400, detail="Format file harus JPG, PNG, atau PDF")
- 
-    file_extension = file.filename.split(".")[-1]
-    unique_filename = f"{uuid.uuid4()}.{file_extension}"
-    file_path = f"uploads/certifications/{unique_filename}"
-    
+
+    # 3. Upload ke MinIO
     try:
-        with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
+        # Baca file ke memori
+        file_content = await file.read()
+        file_stream = io.BytesIO(file_content)
+        file_size = len(file_content)
+        
+        file_extension = file.filename.split(".")[-1]
+        # Path: certifications/USER_ID_UUID.pdf
+        object_name = f"certifications/{current_user.id}_{uuid.uuid4()}.{file_extension}"
+
+        # Upload
+        minio_client.put_object(
+            bucket_name,
+            object_name,
+            file_stream,
+            length=file_size,
+            content_type=file.content_type
+        )
+
+        # Generate URL Publik
+        endpoint = os.getenv("MINIO_ENDPOINT")
+        # Format: http://IP_VPS:PORT/bucket/certifications/file.pdf
+        file_url = f"http://{endpoint}/{bucket_name}/{object_name}"
+
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Gagal upload file: {str(e)}")
- 
-    file_url = f"/static/certifications/{unique_filename}"
- 
+        raise HTTPException(status_code=500, detail=f"Gagal upload MinIO: {str(e)}")
+
+    # 4. Simpan Data ke Database
     cert_data = profile_schema.CertificationCreate(
         name=name,
         organizer=organizer,
@@ -106,26 +181,24 @@ def delete_certification(
     cert_id: int,
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
-): 
+):
+    # Ambil data sertifikat dulu untuk dapat URL file
     cert = service.get_certification(db, current_user.id, cert_id)
     
-    # 2. Hapus File Fisik (Jika ada)
+    # Hapus File di MinIO jika ada URL-nya
     if cert.proof_url:
-        # Konversi URL Web ke Path File Lokal
-        # URL: /static/certifications/namafile.pdf  -->  Path: uploads/certifications/namafile.pdf
-        filename = cert.proof_url.split("/")[-1]
-        file_path = f"uploads/certifications/{filename}"
-        
-        # Cek apakah file benar-benar ada, lalu hapus
-        if os.path.exists(file_path):
-            try:
-                os.remove(file_path)
-            except Exception as e:
-                print(f"Gagal menghapus file fisik: {e}") 
- 
+        try:
+            # URL: http://IP:PORT/bucket_name/certifications/filename.pdf
+            # Kita butuh path relatif: certifications/filename.pdf
+            # Split berdasarkan nama bucket
+            object_name = cert.proof_url.split(f"/{bucket_name}/")[-1]
+            
+            minio_client.remove_object(bucket_name, object_name)
+        except Exception as e:
+            print(f"Warning: Gagal menghapus file fisik di MinIO: {e}")
+
     return service.delete_certification(db, current_user.id, cert_id)
 
-    
 # --- SUB-MODULE: EXPERIENCE ---
 
 @router.post("/experience", response_model=profile_schema.ExperienceResponse)
@@ -144,66 +217,62 @@ def delete_experience(
 ):
     return service.delete_experience(db, current_user.id, exp_id)
 
-## --- AVATAR ---
+# --- SUB-MODULE: AVATAR (MINIO UPDATED) ---
+
 @router.post("/avatar", response_model=profile_schema.ProfileFullResponse)
 async def upload_avatar(
     file: UploadFile = File(...),
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    # 1. Validasi Tipe File (Hanya Gambar)
+    # 1. Validasi Tipe File
     allowed_types = ["image/jpeg", "image/png", "image/webp"]
     if file.content_type not in allowed_types:
         raise HTTPException(status_code=400, detail="Format file harus JPG, PNG, atau WebP")
 
-    # 2. Siapkan Folder Penyimpanan
-    # Kita buat folder khusus 'avatars' di dalam 'uploads'
-    upload_dir = "uploads/avatars"
-    os.makedirs(upload_dir, exist_ok=True)
-
-    # 3. Generate Nama File Unik
-    # Tips: Kita pakai user_id di nama file biar gampang dilacak, tapi tetap pakai UUID biar unik
-    file_extension = file.filename.split(".")[-1]
-    unique_filename = f"user_{current_user.id}_{uuid.uuid4()}.{file_extension}"
-    file_path = f"{upload_dir}/{unique_filename}"
-    
-    # 4. Simpan File Fisik
+    # 2. Upload ke MinIO
     try:
-        with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Gagal menyimpan file: {str(e)}")
+        file_content = await file.read()
+        file_stream = io.BytesIO(file_content)
+        file_size = len(file_content)
+        
+        file_extension = file.filename.split(".")[-1]
+        # Path: avatars/USER_ID_UUID.jpg
+        object_name = f"avatars/{current_user.id}_{uuid.uuid4()}.{file_extension}"
 
-    # 5. Update Database (URL)
-    # Ingat: Folder 'uploads' sudah di-mount ke URL '/static' di main.py
-    file_url = f"/static/avatars/{unique_filename}"
-    
-    # Kita gunakan service update_profile yang sudah ada
+        minio_client.put_object(
+            bucket_name,
+            object_name,
+            file_stream,
+            length=file_size,
+            content_type=file.content_type
+        )
+
+        endpoint = os.getenv("MINIO_ENDPOINT")
+        file_url = f"http://{endpoint}/{bucket_name}/{object_name}"
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Gagal upload MinIO: {str(e)}")
+
+    # 3. Update Database
     update_data = profile_schema.ProfileUpdate(avatar_url=file_url)
-    
-    return service.update_profile(db, current_user.id, update_data) 
+    return service.update_profile(db, current_user.id, update_data)
 
 @router.delete("/avatar", response_model=profile_schema.ProfileFullResponse)
 def delete_avatar(
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    # 1. Ambil profil user saat ini untuk mengecek URL avatar lama
     profile = service.get_profile_by_user_id(db, current_user.id)
     
-    # 2. Hapus File Fisik (Jika ada)
+    # Hapus File di MinIO
     if profile.avatar_url:
-        # Konversi URL Web ke Path File Lokal
-        # URL: /static/avatars/namafile.jpg  -->  Path: uploads/avatars/namafile.jpg
-        filename = profile.avatar_url.split("/")[-1]
-        file_path = f"uploads/avatars/{filename}"
-        
-        # Cek apakah file benar-benar ada di folder, lalu hapus
-        if os.path.exists(file_path):
-            try:
-                os.remove(file_path)
-            except Exception as e:
-                print(f"Gagal menghapus file fisik: {e}") # Print error di terminal saja, jangan stop proses API
+        try:
+            # URL: http://IP:PORT/bucket_name/avatars/filename.jpg
+            object_name = profile.avatar_url.split(f"/{bucket_name}/")[-1]
+            minio_client.remove_object(bucket_name, object_name)
+        except Exception as e:
+            print(f"Warning: Gagal menghapus avatar di MinIO: {e}")
     
-    # 3. Hapus Link di Database
+    # Hapus Link di Database
     return service.remove_avatar(db, current_user.id)

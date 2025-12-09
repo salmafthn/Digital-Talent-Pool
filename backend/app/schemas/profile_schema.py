@@ -29,6 +29,21 @@ class FunctionalAreaEnum(str, Enum):
     CYBER_SECURITY = "Keamanan Informasi dan Siber"
     INFRASTRUCTURE = "Teknologi dan Infrastruktur"
     IT_SERVICES = "Layanan Teknologi Informasi"
+    
+    
+SKILL_OPTIONS = [
+    "Software Development", "Requirements Analysis", "Software Optimization", 
+    "Usability", "Performance Tuning", "Maintainability", 
+    "Backend Development", "System Design", "Scalability", 
+    "Collaboration", "Teamwork", "Security", 
+    "Reliability", "Clean Code", "Code Efficiency", 
+    "Code Review", "Best Practices", "Error Handling", 
+    "Monitoring", "Continuous Learning", "Backend Design", 
+    "Quality Assurance", "Problem Solving", "Service Maintenance", 
+    "Service Optimization", "Java Programming", "Object Oriented Programming", 
+    "Communication", "English Proficiency", "SQL", 
+    "API Development", "Microservices Architecture", "Service Oriented Architecture"
+]
 
 class EducationBase(BaseModel):
     level: EducationLevelEnum
@@ -141,33 +156,31 @@ class ExperienceResponse(ExperienceBase):
         from_attributes = True
 
 # --- SCHEMAS UNTUK PROFILE UTAMA ---
-# Schema Update (HANYA BOLEH update field yang tidak dikunci)
 class ProfileUpdate(BaseModel):
     phone: Optional[str] = None
     linkedin_url: Optional[str] = None
     address: Optional[str] = None
     bio: Optional[str] = None
-    avatar_url: Optional[str] = None
-    
-    # NOTE: NIK, Nama, Gender, Birth Date TIDAK ADA DISINI
-    # Artinya field tersebut tidak bisa diupdate lewat endpoint ini.
+    avatar_url: Optional[str] = None    
+    skills: Optional[List[str]] = None
+ 
+    @field_validator('skills')
+    def validate_skills(cls, v):
+        if v: 
+            valid_skills_lower = [s.lower() for s in SKILL_OPTIONS]
+            for skill in v:
+                if skill.lower() not in valid_skills_lower:
+                    raise ValueError(f"Skill '{skill}' tidak valid. Pilih dari daftar yang tersedia.")
+        return v
 
-# Schema Response (Menampilkan semua data termasuk anak-anaknya)
 class ProfileFullResponse(BaseModel):
     id: int
     user_id: int
-    nik: Optional[str]
-    full_name: Optional[str]
-    email: Optional[str] = None # Dari tabel user (nanti di-inject)
-    gender: Optional[str]
-    birth_date: Optional[date]
-    phone: Optional[str]
-    linkedin_url: Optional[str]
-    address: Optional[str]
-    bio: Optional[str]
     avatar_url: Optional[str]
     
-    # Nested Objects (List)
+    skills: List[str] = [] 
+    
+    # Nested Objects
     educations: List[EducationResponse] = []
     certifications: List[CertificationResponse] = []
     experiences: List[ExperienceResponse] = []
