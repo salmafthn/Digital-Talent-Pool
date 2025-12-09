@@ -1,43 +1,112 @@
-"use client"
+"use client";
 
-import { useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
-import Navbar from "@/components/navbar"
-import Footer from "@/components/footer"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { useToast } from "@/hooks/use-toast"
-import PhotoUpload from "@/components/photo-upload"
-import { DataDiriSection } from "@/components/profile/data-diri-section"
-import { PendidikanSection } from "@/components/profile/pendidikan-section"
-import { SertifikasiSection } from "@/components/profile/sertifikasi-section"
-import { PengalamanSection } from "@/components/profile/pengalaman-section"
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+
+import Navbar from "@/components/navbar";
+import Footer from "@/components/footer";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useToast } from "@/hooks/use-toast";
+import PhotoUpload from "@/components/photo-upload";
+import { DataDiriSection } from "@/components/profile/data-diri-section";
+import { PendidikanSection } from "@/components/profile/pendidikan-section";
+import { SertifikasiSection } from "@/components/profile/sertifikasi-section";
+import { PengalamanSection } from "@/components/profile/pengalaman-section";
+import { getMyProfile } from "@/services/profileService";
 
 type LockedFields = {
-  nik?: boolean
-  nama?: boolean
-  gender?: boolean
-  tanggalLahir?: boolean
-}
+  nik?: boolean;
+  nama?: boolean;
+  gender?: boolean;
+  tanggalLahir?: boolean;
+};
 
 export default function ProfilePage() {
-  const { toast } = useToast()
-  const router = useRouter()
-  const [locked, setLocked] = useState<LockedFields>({})
-  const [activeTab, setActiveTab] = useState("data-diri")
+  const { toast } = useToast();
+  const router = useRouter();
+  const [locked, setLocked] = useState<LockedFields>({});
+  const [activeTab, setActiveTab] = useState("data-diri");
 
+  // 1) Guard: kalau belum ada token, paksa ke /login
   useEffect(() => {
-    const raw = typeof window !== "undefined" ? localStorage.getItem("profileLocked") : null
+    if (typeof window === "undefined") return;
+    const token = localStorage.getItem("token");
+    if (!token) {
+      router.push("/login");
+    }
+  }, [router]);
+
+  // 2) Ambil status field yang dikunci dari localStorage
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const raw = localStorage.getItem("profileLocked");
     if (raw) {
       try {
-        setLocked(JSON.parse(raw))
-      } catch {}
+        setLocked(JSON.parse(raw));
+      } catch {
+        // ignore parse error
+      }
     }
-  }, [])
+  }, []);
+
+  // 3) Fetch profil dari backend, simpan ke localStorage + sinkronkan navbar
+  useEffect(() => {
+    const fetchProfile = async () => {
+      try {
+        const data = await getMyProfile();
+
+        if (typeof window !== "undefined") {
+          // a. mapping ke struktur yang dipakai DataDiriSection
+          const profileDataDiri = {
+            nik: data.nik ?? "",
+            nama: data.full_name ?? "",
+            gender: data.gender ?? "",
+            tanggalLahir: data.birth_date ?? "",
+            email: data.email ?? "",
+            whatsapp: data.whatsapp ?? "",
+          };
+
+          localStorage.setItem(
+            "profileDataDiri",
+            JSON.stringify(profileDataDiri)
+          );
+
+          // b. simpan data user untuk Navbar
+          const userData = {
+            name: data.username || "Pengguna",
+            email: data.email || "",
+          };
+          const userJson = JSON.stringify(userData);
+          localStorage.setItem("user", userJson);
+
+          // c. trigger event storage supaya Navbar langsung update
+          window.dispatchEvent(
+            new StorageEvent("storage", {
+              key: "user",
+              newValue: userJson,
+            })
+          );
+        }
+      } catch (error) {
+        console.error("Gagal memuat profil dari backend", error);
+        toast({
+          variant: "destructive",
+          title: "Gagal memuat profil",
+          description: "Profil sementara masih menggunakan data lokal.",
+        });
+      }
+    };
+
+    fetchProfile();
+  }, [toast]);
 
   function handleLockFields(partial: Partial<LockedFields>) {
-    const next = { ...locked, ...partial }
-    setLocked(next)
-    localStorage.setItem("profileLocked", JSON.stringify(next))
+    const next = { ...locked, ...partial };
+    setLocked(next);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("profileLocked", JSON.stringify(next));
+    }
   }
 
   return (
@@ -50,26 +119,42 @@ export default function ProfilePage() {
           </section>
 
           <section className="bg-white rounded-2xl shadow p-4 sm:p-6 md:p-8">
-            <h1 className="text-3xl sm:text-4xl font-bold text-center mb-8">Ayo Lengkapi Profilemu!</h1>
+            <h1 className="text-3xl sm:text-4xl font-bold text-center mb-8">
+              Ayo Lengkapi Profilemu!
+            </h1>
 
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+            <Tabs
+              value={activeTab}
+              onValueChange={setActiveTab}
+              className="w-full"
+            >
               <TabsList className="grid grid-cols-2 sm:grid-cols-4 mb-6 w-full">
                 <TabsTrigger value="data-diri">Data Diri</TabsTrigger>
                 <TabsTrigger value="pendidikan">Pendidikan</TabsTrigger>
-                <TabsTrigger value="sertifikasi">Pelatihan dan Sertifikasi</TabsTrigger>
+                <TabsTrigger value="sertifikasi">
+                  Pelatihan dan Sertifikasi
+                </TabsTrigger>
                 <TabsTrigger value="pengalaman">Pengalaman</TabsTrigger>
               </TabsList>
 
               <TabsContent value="data-diri" className="space-y-4">
-                <DataDiriSection locked={locked} onLock={handleLockFields} onNext={() => setActiveTab("pendidikan")} />
+                <DataDiriSection
+                  locked={locked}
+                  onLock={handleLockFields}
+                  onNext={() => setActiveTab("pendidikan")}
+                />
               </TabsContent>
 
               <TabsContent value="pendidikan" className="space-y-4">
-                <PendidikanSection onNext={() => setActiveTab("sertifikasi")} />
+                <PendidikanSection
+                  onNext={() => setActiveTab("sertifikasi")}
+                />
               </TabsContent>
 
               <TabsContent value="sertifikasi" className="space-y-4">
-                <SertifikasiSection onNext={() => setActiveTab("pengalaman")} />
+                <SertifikasiSection
+                  onNext={() => setActiveTab("pengalaman")}
+                />
               </TabsContent>
 
               <TabsContent value="pengalaman" className="space-y-4">
@@ -81,5 +166,5 @@ export default function ProfilePage() {
       </main>
       <Footer />
     </div>
-  )
+  );
 }
