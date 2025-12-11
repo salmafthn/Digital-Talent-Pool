@@ -160,6 +160,7 @@ class ProfileUpdate(BaseModel):
     phone: Optional[str] = None
     linkedin_url: Optional[str] = None
     portfolio_url: Optional[str] = None
+    instagram_username: Optional[str] = None
     address: Optional[str] = None
     bio: Optional[str] = None
     avatar_url: Optional[str] = None    
@@ -189,6 +190,7 @@ class ProfileFullResponse(BaseModel):
     bio: Optional[str] = None
     linkedin_url: Optional[str] = None
     portfolio_url: Optional[str] = None 
+    instagram_username: Optional[str] = None
     
     avatar_url: Optional[str] = None
     skills: List[str] = [] 

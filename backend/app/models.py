@@ -33,6 +33,7 @@ class Profile(Base):
     avatar_url = Column(String)
     skills = Column(JSON, default=[])
     linkedin_url = Column(String, nullable=True)
+    instagram_username = Column(String, nullable=True)
     
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
