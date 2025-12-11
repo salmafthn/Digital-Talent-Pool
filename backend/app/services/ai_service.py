@@ -28,7 +28,7 @@ class AIService:
     async def get_interview_reply(self, prompt: str, history: list = []) -> ai_schema.InterviewResponse:
         # Format Baru Tim 3: butuh 'input' dan 'history'
         payload = {
-            "input": prompt,
+            "prompt": prompt,
             "history": history # List of {"role": "user/assistant", "content": "..."}
         }
         
