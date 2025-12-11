@@ -6,8 +6,10 @@ import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { ChevronDown, X } from "lucide-react"
+import { updateMyProfile } from "@/services/profileService"
+import { useToast } from "@/hooks/use-toast"
 
-type DataDiriForm = {
+export type DataDiriForm = {
   nik: string
   nama: string
   gender: string
@@ -33,6 +35,8 @@ interface Props {
   locked: LockedFields
   onLock: (fields: Partial<LockedFields>) => void
   onNext: () => void
+  /** data awal yang datang dari backend (/profile/) */
+  initialData?: Partial<DataDiriForm>
 }
 
 // daftar skill dari kamu
@@ -72,7 +76,8 @@ const SKILL_OPTIONS: string[] = [
   "service oriented architecture",
 ]
 
-export function DataDiriSection({ locked, onLock, onNext }: Props) {
+export function DataDiriSection({ locked, onLock, onNext, initialData }: Props) {
+  const { toast } = useToast()
   const [form, setForm] = useState<DataDiriForm>({
     nik: "",
     nama: "",
@@ -89,25 +94,20 @@ export function DataDiriSection({ locked, onLock, onNext }: Props) {
   })
 
   const [skillsOpen, setSkillsOpen] = useState(false)
+  const [saving, setSaving] = useState(false)
 
+  // ⬇️ Isi awal form dari props `initialData` (BUKAN dari localStorage lagi)
   useEffect(() => {
-    const raw =
-      typeof window !== "undefined" ? localStorage.getItem("profileDataDiri") : null
-    if (raw) {
-      try {
-        const parsed = JSON.parse(raw) as Partial<DataDiriForm>
-        setForm((prev) => ({
-          ...prev,
-          ...parsed,
-          keterampilan: Array.isArray(parsed.keterampilan)
-            ? parsed.keterampilan
-            : [],
-        }))
-      } catch {
-        // abaikan error parse
-      }
-    }
-  }, [])
+    if (!initialData) return
+
+    setForm((prev) => ({
+      ...prev,
+      ...initialData,
+      keterampilan: Array.isArray(initialData.keterampilan)
+        ? initialData.keterampilan
+        : prev.keterampilan,
+    }))
+  }, [initialData])
 
   function handleChange<K extends keyof DataDiriForm>(
     key: K,
@@ -133,14 +133,61 @@ export function DataDiriSection({ locked, onLock, onNext }: Props) {
     }))
   }
 
-  function handleSave() {
+  // 🔥 Simpan ke BACKEND (PUT /profile/)
+  async function handleSave() {
     if (!form.nik.trim() || !form.nama.trim() || !form.gender || !form.tanggalLahir) {
-      alert("NIK, Nama, Gender, dan Tanggal lahir wajib diisi.")
+      toast({
+        variant: "destructive",
+        title: "Form belum lengkap",
+        description: "NIK, Nama, Gender, dan Tanggal lahir wajib diisi.",
+      })
       return
     }
-    localStorage.setItem("profileDataDiri", JSON.stringify(form))
-    onLock({ nik: true, nama: true, gender: true, tanggalLahir: true })
-    onNext()
+
+    try {
+      setSaving(true)
+
+      // ⚠️ SESUAIKAN field ini dengan schema ProfileUpdate di backend
+      await updateMyProfile({
+        nik: form.nik,
+        full_name: form.nama,
+        gender: form.gender, // nanti kalau backend pakai enum "MALE"/"FEMALE" tinggal mapping di sini
+        birth_date: form.tanggalLahir,
+        email: form.email,
+        whatsapp: form.wa,
+        linkedin: form.linkedin,
+        instagram: form.instagram,
+        portofolio: form.portofolio,
+        address: form.alamat,
+        about: form.tentang,
+        skills: form.keterampilan,
+      })
+
+      toast({
+        title: "Profil tersimpan",
+        description: "Data diri kamu berhasil diperbarui.",
+      })
+
+      // Kunci field identitas utama
+      onLock({ nik: true, nama: true, gender: true, tanggalLahir: true })
+
+      // Lanjut ke tab Pendidikan
+      onNext()
+    } catch (err: any) {
+      console.error("Gagal update profil:", err)
+      const detail =
+        err?.response?.data?.detail ??
+        err?.response?.data?.message ??
+        "Terjadi kesalahan saat menyimpan profil."
+
+      toast({
+        variant: "destructive",
+        title: "Gagal menyimpan profil",
+        description: typeof detail === "string" ? detail : "Silakan coba lagi beberapa saat lagi.",
+      })
+    } finally {
+      setSaving(false)
+    }
   }
 
   const readOnlyCls = "bg-slate-100 cursor-not-allowed"
@@ -297,14 +344,11 @@ export function DataDiriSection({ locked, onLock, onNext }: Props) {
 
       {/* Keterampilan */}
       <div className="relative">
-        <label className="text-sm font-medium">
-          Keterampilan
-        </label>
+        <label className="text-sm font-medium">Keterampilan</label>
         <p className="mt-1 text-xs text-slate-500">
           Pilih beberapa keterampilan yang paling menggambarkan profilmu.
         </p>
 
-        {/* Box chips + dropdown trigger */}
         <div
           className="mt-2 min-h-[44px] w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm flex items-center gap-2 flex-wrap cursor-pointer"
           onClick={() => setSkillsOpen((o) => !o)}
@@ -361,7 +405,9 @@ export function DataDiriSection({ locked, onLock, onNext }: Props) {
       </div>
 
       <div className="pt-2 flex justify-end">
-        <Button onClick={handleSave}>Simpan &amp; Lanjut ke Pendidikan</Button>
+        <Button onClick={handleSave} disabled={saving}>
+          {saving ? "Menyimpan..." : "Simpan & Lanjut ke Pendidikan"}
+        </Button>
       </div>
     </div>
   )
