@@ -155,3 +155,25 @@ class FinalLevel(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     profile = relationship("Profile", back_populates="final_levels")
+    
+
+class InterviewLog(Base):
+    __tablename__ = "interview_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    
+    # Apa yang user ketik
+    user_prompt = Column(Text, nullable=False)
+    
+    # Apa yang AI jawab
+    ai_response = Column(Text, nullable=False)
+    
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    # Relasi ke User
+    user = relationship("User", back_populates="logs")
+
+# ... JANGAN LUPA tambahkan back_populates di class User di atas ...
+# Di dalam class User(Base):
+#    logs = relationship("InterviewLog", back_populates="user")
