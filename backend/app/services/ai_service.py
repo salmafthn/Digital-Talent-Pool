@@ -26,13 +26,10 @@ class AIService:
 
     # A. INTERVIEW (Update Format Payload)
     async def get_interview_reply(self, prompt: str, history: list = []) -> ai_schema.InterviewResponse:
-        # Format Baru Tim 3: butuh 'input' dan 'history'
         payload = {
-            "prompt": prompt,
-            "history": history # List of {"role": "user/assistant", "content": "..."}
+            "prompt": prompt,     # Isinya Data Profil User
+            "history": history    # Isinya System Prompt
         }
-        
-        # Endpoint Tim 3 mungkin berubah jadi /interview atau /chat, sesuaikan jika gagal
         data = await self._post_request("/interview", payload)
         return ai_schema.InterviewResponse(**data)
 

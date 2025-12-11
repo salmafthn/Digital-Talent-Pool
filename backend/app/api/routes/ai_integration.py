@@ -10,6 +10,9 @@ from datetime import date
 router = APIRouter(prefix="/ai", tags=["AI Integration"])
 ai_service = AIService()
 
+
+
+
 def calculate_duration(start_date: date, end_date: date = None):
     if not end_date:
         end_date = date.today()
@@ -54,17 +57,26 @@ async def start_interview_session(
     experiences = db.query(models.Experience).filter(models.Experience.profile_id == profile.id).all()
     certifications = db.query(models.Certification).filter(models.Certification.profile_id == profile.id).all()
 
-    initial_prompt = format_profile_for_ai(current_user, profile, educations, experiences, certifications)
+    user_data_prompt = format_profile_for_ai(current_user, profile, educations, experiences, certifications)
     
+    # 3. Reset Session Lama
     db.query(models.InterviewLog).filter(models.InterviewLog.user_id == current_user.id).delete()
     db.commit()
 
-    ai_result = await ai_service.get_interview_reply(initial_prompt, []) 
+    system_instruction = {
+        "role": "system",
+        "content": "Anda adalah interviewer dari platform talenta digital Diploy khusus Area Fungsi. Tugas Anda adalah menggali detail kompetensi talenta berdasarkan data awal yang diberikan, meluruskan jawaban yang kurang relevan, dan memastikan informasi yang terkumpul cukup tajam untuk pemetaan Area Fungsi dan Level Okupasi. Gunakan bahasa Indonesia yang baik dan benar, tetap profesional, dan jangan menggunakan bahasa gaul atau singkatan informal."
+    }
+
+    ai_result = await ai_service.get_interview_reply(
+        prompt=user_data_prompt,      
+        history=[system_instruction]  
+    )
     
     new_log = models.InterviewLog(
         user_id=current_user.id,
-        user_prompt=initial_prompt, # Prompt panjang tadi
-        ai_response=ai_result.data.answer # Jawaban pertama AI (Pertanyaan)
+        user_prompt=user_data_prompt,
+        ai_response=ai_result.data.answer
     )
     db.add(new_log)
     db.commit()
