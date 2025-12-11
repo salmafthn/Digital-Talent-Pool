@@ -83,6 +83,59 @@ async def start_interview_session(
 
     return ai_result
 
+# --- [BAGIAN YANG HILANG: ENDPOINT REPLY CHAT] ---
+@router.post("/interview", response_model=ai_schema.InterviewResponse)
+async def chat_interview(
+    request: ai_schema.InterviewRequest,
+    current_user: models.User = Depends(deps.get_current_user),
+    db: Session = Depends(get_db)
+):
+    # 1. Ambil History Chat Sebelumnya dari Database
+    past_logs = db.query(models.InterviewLog).filter(
+        models.InterviewLog.user_id == current_user.id
+    ).order_by(models.InterviewLog.created_at.asc()).all()
+    
+    # 2. Susun History untuk dikirim ke AI
+    history_payload = []
+    
+    # PENTING: Selipkan System Prompt lagi di awal biar AI gak lupa ingatan
+    history_payload.append({
+        "role": "system",
+        "content": "Anda adalah interviewer dari platform talenta digital Diploy khusus Area Fungsi. Tugas Anda adalah menggali detail kompetensi talenta berdasarkan data awal yang diberikan, meluruskan jawaban yang kurang relevan, dan memastikan informasi yang terkumpul cukup tajam untuk pemetaan Area Fungsi dan Level Okupasi. Gunakan bahasa Indonesia yang baik dan benar, tetap profesional, dan jangan menggunakan bahasa gaul atau singkatan informal."
+    })
+
+    # Masukkan chat lama user & assistant
+    for log in past_logs:
+        history_payload.append({"role": "user", "content": log.user_prompt})
+        history_payload.append({"role": "assistant", "content": log.ai_response})
+    
+    # 3. Kirim Prompt Baru + History Lengkap ke AI
+    ai_result = await ai_service.get_interview_reply(request.prompt, history_payload)
+    
+    # 4. Simpan Chat BARU ke Database
+    new_log = models.InterviewLog(
+        user_id=current_user.id,
+        user_prompt=request.prompt,
+        ai_response=ai_result.data.answer
+    )
+    db.add(new_log)
+    db.commit()
+    
+    return ai_result
+
+# --- [BAGIAN YANG HILANG: ENDPOINT HISTORY BUAT FRONTEND] ---
+from typing import List # Pastikan import List ada di paling atas file
+@router.get("/history", response_model=List[ai_schema.ChatLogResponse])
+def get_chat_history(
+    current_user: models.User = Depends(deps.get_current_user),
+    db: Session = Depends(get_db)
+):
+    logs = db.query(models.InterviewLog).filter(
+        models.InterviewLog.user_id == current_user.id
+    ).order_by(models.InterviewLog.created_at.asc()).all()
+    
+    return logs
+
 # 2. Talent Mapping 
 @router.post("/mapping", response_model=ai_schema.MappingResponse)
 async def talent_mapping(
