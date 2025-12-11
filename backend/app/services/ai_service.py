@@ -15,7 +15,6 @@ class AIService:
         url = f"{self.base_url}{endpoint}"
         try:
             async with httpx.AsyncClient() as client:
-                # Timeout diperpanjang jadi 60s karena AI mapping butuh waktu mikir
                 response = await client.post(url, json=payload, timeout=60.0)
                 response.raise_for_status()
                 return response.json()
