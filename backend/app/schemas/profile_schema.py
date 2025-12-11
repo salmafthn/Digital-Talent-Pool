@@ -159,6 +159,8 @@ class ExperienceResponse(ExperienceBase):
 class ProfileUpdate(BaseModel):
     phone: Optional[str] = None
     linkedin_url: Optional[str] = None
+    portfolio_url: Optional[str] = None
+    instagram_username: Optional[str] = None
     address: Optional[str] = None
     bio: Optional[str] = None
     avatar_url: Optional[str] = None    
@@ -176,8 +178,21 @@ class ProfileUpdate(BaseModel):
 class ProfileFullResponse(BaseModel):
     id: int
     user_id: int
-    avatar_url: Optional[str]
     
+    # --- TAMBAHKAN BAGIAN INI AGAR MUNCUL DI JSON ---
+    nik: Optional[str] = None
+    full_name: Optional[str] = None
+    gender: Optional[str] = None
+    birth_date: Optional[date] = None
+    
+    phone: Optional[str] = None
+    address: Optional[str] = None
+    bio: Optional[str] = None
+    linkedin_url: Optional[str] = None
+    portfolio_url: Optional[str] = None 
+    instagram_username: Optional[str] = None
+    
+    avatar_url: Optional[str] = None
     skills: List[str] = [] 
     
     # Nested Objects

@@ -13,6 +13,7 @@ class User(Base):
     hashed_password = Column(String)
     
     profile = relationship("Profile", back_populates="user", uselist=False)
+    logs = relationship("InterviewLog", back_populates="user")
 
 class Profile(Base):
     __tablename__ = "profiles"
@@ -25,11 +26,14 @@ class Profile(Base):
     gender = Column(String)
     birth_date = Column(Date)
     phone = Column(String)
-    linkedin_url = Column(String)
+    linkedin_url = Column(String, nullable=True)
+    portfolio_url = Column(String, nullable=True)
     address = Column(Text)
     bio = Column(Text)
     avatar_url = Column(String)
     skills = Column(JSON, default=[])
+    linkedin_url = Column(String, nullable=True)
+    instagram_username = Column(String, nullable=True)
     
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
@@ -57,6 +61,7 @@ class Education(Base):
     final_project_title = Column(String, nullable=True) # Baru: Judul TA
 
     profile = relationship("Profile", back_populates="educations")
+    
 
 class Certification(Base):
     __tablename__ = "certifications"
@@ -155,3 +160,25 @@ class FinalLevel(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     profile = relationship("Profile", back_populates="final_levels")
+    
+
+class InterviewLog(Base):
+    __tablename__ = "interview_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    
+    # Apa yang user ketik
+    user_prompt = Column(Text, nullable=False)
+    
+    # Apa yang AI jawab
+    ai_response = Column(Text, nullable=False)
+    
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    # Relasi ke User
+    user = relationship("User", back_populates="logs")
+
+# ... JANGAN LUPA tambahkan back_populates di class User di atas ...
+# Di dalam class User(Base):
+#    logs = relationship("InterviewLog", back_populates="user")
