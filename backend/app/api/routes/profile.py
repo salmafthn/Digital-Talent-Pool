@@ -188,9 +188,6 @@ def delete_certification(
     # Hapus File di MinIO jika ada URL-nya
     if cert.proof_url:
         try:
-            # URL: http://IP:PORT/bucket_name/certifications/filename.pdf
-            # Kita butuh path relatif: certifications/filename.pdf
-            # Split berdasarkan nama bucket
             object_name = cert.proof_url.split(f"/{bucket_name}/")[-1]
             
             minio_client.remove_object(bucket_name, object_name)
