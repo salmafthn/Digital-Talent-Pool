@@ -15,13 +15,12 @@ class InterviewResponse(BaseModel):
 
 # --- B. SCHEMA TALENT MAPPING ---
 class MappingRequest(BaseModel):
-    prompt: str  # Gabungan semua jawaban user
+    prompt: str 
 
 class CompetencyLevel(BaseModel):
     level_kompetensi: int
     kecocokan: float
 
-# Karena key-nya spesifik (Tata Kelola TI, dll), kita definisikan fieldnya
 class MappingData(BaseModel):
     Tata_Kelola_TI: Optional[CompetencyLevel] = None
     Pengembangan_Produk_Digital: Optional[CompetencyLevel] = None
@@ -31,13 +30,12 @@ class MappingData(BaseModel):
     Layanan_TI: Optional[CompetencyLevel] = None
 
     class Config:
-        # Mengizinkan field dengan spasi (Mapping manual key)
         populate_by_name = True
 
 class MappingResponse(BaseModel):
     success: bool
     message: str
-    data: Dict[str, CompetencyLevel] # Kita buat Dict agar fleksibel menerima key dengan spasi
+    data: Dict[str, CompetencyLevel] 
 
 # --- C. SCHEMA QUESTION GENERATION ---
 class QuestionRequest(BaseModel):
@@ -66,3 +64,12 @@ class QuestionResponse(BaseModel):
     success: bool
     message: str
     data: QuestionData
+    
+class ChatLogResponse(BaseModel):
+    id: int
+    user_prompt: str
+    ai_response: str
+    # created_at: datetime (opsional jika ingin menampilkan jam)
+
+    class Config:
+        from_attributes = True
