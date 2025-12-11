@@ -8,7 +8,10 @@ import Footer from "@/components/footer";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import PhotoUpload from "@/components/photo-upload";
-import { DataDiriSection } from "@/components/profile/data-diri-section";
+import {
+  DataDiriSection,
+  type DataDiriForm,
+} from "@/components/profile/data-diri-section";
 import { PendidikanSection } from "@/components/profile/pendidikan-section";
 import { SertifikasiSection } from "@/components/profile/sertifikasi-section";
 import { PengalamanSection } from "@/components/profile/pengalaman-section";
@@ -24,8 +27,15 @@ type LockedFields = {
 export default function ProfilePage() {
   const { toast } = useToast();
   const router = useRouter();
+
   const [locked, setLocked] = useState<LockedFields>({});
   const [activeTab, setActiveTab] = useState("data-diri");
+
+  // data awal untuk DataDiriSection (hasil dari backend)
+  const [dataDiriInitial, setDataDiriInitial] =
+    useState<Partial<DataDiriForm> | null>(null);
+
+  const [isLoadingProfile, setIsLoadingProfile] = useState(true);
 
   // 1) Guard: kalau belum ada token, paksa ke /login
   useEffect(() => {
@@ -50,31 +60,35 @@ export default function ProfilePage() {
     }
   }, []);
 
-  // 3) Fetch profil dari backend, simpan ke localStorage + sinkronkan navbar
+  // 3) Fetch profil dari backend, isi state & sinkronkan navbar
   useEffect(() => {
     const fetchProfile = async () => {
       try {
-        const data = await getMyProfile();
+        setIsLoadingProfile(true);
+        const data: any = await getMyProfile();
 
+        // a. mapping ke struktur DataDiriForm
+        const mapped: Partial<DataDiriForm> = {
+          nik: data.nik ?? "",
+          nama: data.full_name ?? "",
+          gender: data.gender ?? "",
+          tanggalLahir: data.birth_date ?? "",
+          email: data.email ?? "",
+          wa: data.whatsapp ?? "",
+          linkedin: data.linkedin ?? "",
+          instagram: data.instagram ?? "",
+          portofolio: data.portofolio ?? data.portfolio ?? "",
+          alamat: data.address ?? "",
+          tentang: data.about ?? "",
+          keterampilan: Array.isArray(data.skills) ? data.skills : [],
+        };
+
+        setDataDiriInitial(mapped);
+
+        // b. simpan data user untuk Navbar
         if (typeof window !== "undefined") {
-          // a. mapping ke struktur yang dipakai DataDiriSection
-          const profileDataDiri = {
-            nik: data.nik ?? "",
-            nama: data.full_name ?? "",
-            gender: data.gender ?? "",
-            tanggalLahir: data.birth_date ?? "",
-            email: data.email ?? "",
-            whatsapp: data.whatsapp ?? "",
-          };
-
-          localStorage.setItem(
-            "profileDataDiri",
-            JSON.stringify(profileDataDiri)
-          );
-
-          // b. simpan data user untuk Navbar
           const userData = {
-            name: data.username || "Pengguna",
+            name: data.username || data.full_name || "Pengguna",
             email: data.email || "",
           };
           const userJson = JSON.stringify(userData);
@@ -93,8 +107,10 @@ export default function ProfilePage() {
         toast({
           variant: "destructive",
           title: "Gagal memuat profil",
-          description: "Profil sementara masih menggunakan data lokal.",
+          description: "Profil sementara masih kosong. Coba lagi nanti.",
         });
+      } finally {
+        setIsLoadingProfile(false);
       }
     };
 
@@ -138,11 +154,18 @@ export default function ProfilePage() {
               </TabsList>
 
               <TabsContent value="data-diri" className="space-y-4">
-                <DataDiriSection
-                  locked={locked}
-                  onLock={handleLockFields}
-                  onNext={() => setActiveTab("pendidikan")}
-                />
+                {isLoadingProfile && !dataDiriInitial ? (
+                  <p className="text-sm text-slate-500">
+                    Memuat data profil...
+                  </p>
+                ) : (
+                  <DataDiriSection
+                    locked={locked}
+                    onLock={handleLockFields}
+                    onNext={() => setActiveTab("pendidikan")}
+                    initialData={dataDiriInitial || undefined}
+                  />
+                )}
               </TabsContent>
 
               <TabsContent value="pendidikan" className="space-y-4">
