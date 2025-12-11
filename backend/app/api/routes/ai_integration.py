@@ -1,35 +1,77 @@
 from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session          # <--- Tambah ini
-from app.core.db import get_db              # <--- Tambah ini
+from sqlalchemy.orm import Session        
+from app.core.db import get_db             
 from app.services.ai_service import AIService
 from app.schemas import ai_schema
 from app.api import deps
 from app import models
+from datetime import date
 
 router = APIRouter(prefix="/ai", tags=["AI Integration"])
 ai_service = AIService()
 
-# 1. Chat Interview (UPDATE: SIMPAN KE DB)
-@router.post("/interview", response_model=ai_schema.InterviewResponse)
-async def chat_interview(
-    request: ai_schema.InterviewRequest,
-    current_user: models.User = Depends(deps.get_current_user),
-    db: Session = Depends(get_db)           # <--- Tambah ini
-):
-    # 1. Dapatkan jawaban dari AI Tim 3
-    ai_result = await ai_service.get_interview_reply(request.prompt)
+def calculate_duration(start_date: date, end_date: date = None):
+    if not end_date:
+        end_date = date.today()
+    delta = end_date - start_date
+    years = delta.days // 365
+    months = (delta.days % 365) // 30
+    return f"{years} tahun {months} bulan"
+def format_profile_for_ai(user: models.User, profile: models.Profile, educations, experiences, certifications):
+    # Ambil data pendidikan terakhir
+    last_edu = educations[0] if educations else None
+    edu_str = f"Jenjang Pendidikan: {last_edu.level if last_edu else '-'}\nJurusan: {last_edu.major if last_edu else '-'}"
     
-    # 2. Simpan percakapan ke Database
+    # Ambil data pengalaman terakhir
+    last_exp = experiences[0] if experiences else None
+    exp_str = f"Posisi Pekerjaan: {last_exp.job_title if last_exp else '-'}\nDeskripsi Tugas: {last_exp.description if last_exp else '-'}\nLama Bekerja: {calculate_duration(last_exp.start_date, last_exp.end_date) if last_exp else '-'}"
+    
+    # Gabungkan Skills
+    skills_str = ", ".join(profile.skills) if profile.skills else "-"
+    
+    # Gabungkan Sertifikasi
+    cert_str = ", ".join([c.name for c in certifications]) if certifications else "-"
+
+    # RANGKAI SESUAI FORMAT TIM 2
+    prompt_text = (
+        f"Berikut data singkat saya:\n"
+        f"{edu_str}\n"
+        f"Bidang Pelatihan: -\n" # Kalau ada data pelatihan di DB, masukkan sini
+        f"Sertifikasi: {cert_str}\n"
+        f"{exp_str}\n"
+        f"Keterampilan: {skills_str}"
+    )
+    return prompt_text
+
+
+@router.post("/interview/start", response_model=ai_schema.InterviewResponse)
+async def start_interview_session(
+    current_user: models.User = Depends(deps.get_current_user),
+    db: Session = Depends(get_db)
+):
+    profile = db.query(models.Profile).filter(models.Profile.user_id == current_user.id).first()
+    educations = db.query(models.Education).filter(models.Education.profile_id == profile.id).all()
+    experiences = db.query(models.Experience).filter(models.Experience.profile_id == profile.id).all()
+    certifications = db.query(models.Certification).filter(models.Certification.profile_id == profile.id).all()
+
+    initial_prompt = format_profile_for_ai(current_user, profile, educations, experiences, certifications)
+    
+    db.query(models.InterviewLog).filter(models.InterviewLog.user_id == current_user.id).delete()
+    db.commit()
+
+    ai_result = await ai_service.get_interview_reply(initial_prompt, []) 
+    
     new_log = models.InterviewLog(
         user_id=current_user.id,
-        user_prompt=request.prompt,
-        ai_response=ai_result.data.answer  # Ambil teks jawaban AI
+        user_prompt=initial_prompt, # Prompt panjang tadi
+        ai_response=ai_result.data.answer # Jawaban pertama AI (Pertanyaan)
     )
     db.add(new_log)
     db.commit()
-    
+
     return ai_result
-# 2. Talent Mapping (UPDATE: OTOMATIS AMBIL DARI DB)
+
+# 2. Talent Mapping 
 @router.post("/mapping", response_model=ai_schema.MappingResponse)
 async def talent_mapping(
     # request: ai_schema.MappingRequest, <--- Kita bisa abaikan input frontend
