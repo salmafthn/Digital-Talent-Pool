@@ -3,17 +3,18 @@ import api from "@/lib/api"
 
 // ---- Tipe opsional (biar lebih rapi) ----
 export interface ProfileUpdatePayload {
+  avatar_url?: string;
   nik?: string
   full_name?: string
   gender?: string
   birth_date?: string
   email?: string
-  whatsapp?: string
-  linkedin?: string
-  instagram?: string
-  portofolio?: string
+  phone?: string;
+  linkedin_url?: string;
+  instagram_username?: string;
+  portfolio_url?: string;
   address?: string
-  about?: string
+  bio?: string;
   skills?: string[]
 }
 

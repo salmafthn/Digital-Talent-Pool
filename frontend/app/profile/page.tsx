@@ -74,12 +74,12 @@ export default function ProfilePage() {
           gender: data.gender ?? "",
           tanggalLahir: data.birth_date ?? "",
           email: data.email ?? "",
-          wa: data.whatsapp ?? "",
-          linkedin: data.linkedin ?? "",
-          instagram: data.instagram ?? "",
-          portofolio: data.portofolio ?? data.portfolio ?? "",
+          wa: data.phone ?? "",
+          linkedin: data.linkedin_url ?? "",
+          instagram: data.instagram_username ?? "",
+          portofolio: data.portfolio_url ?? "",
           alamat: data.address ?? "",
-          tentang: data.about ?? "",
+          tentang: data.bio ?? "",
           keterampilan: Array.isArray(data.skills) ? data.skills : [],
         };
 
