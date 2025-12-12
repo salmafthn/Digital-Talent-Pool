@@ -1,8 +1,9 @@
 // frontend/services/profileService.ts
 import api from "@/lib/api"
 
-// ====== TYPES sesuai BE ======
-
+// =========================
+// EDUCATION (sesuai BE)
+// =========================
 export type EducationLevel =
   | "SMA/SMK"
   | "D3"
@@ -24,11 +25,35 @@ export interface EducationCreatePayload {
   final_project_title?: string | null
 }
 
-
 export interface EducationResponse extends EducationCreatePayload {
   id: number
 }
 
+// =========================
+// CERTIFICATION (upload file)
+// =========================
+export interface CertificationResponse {
+  id: number
+  name: string
+  organizer: string
+  year: number
+  proof_url: string
+  description: string
+  bidang_keahlian?: string | null
+}
+
+export type AddCertificationPayload = {
+  name: string
+  organizer: string
+  year: number
+  description: string
+  file: File
+  bidang_keahlian?: string
+}
+
+// =========================
+// PROFILE (minimal typed)
+// =========================
 export interface ProfileUpdatePayload {
   phone?: string | null
   linkedin_url?: string | null
@@ -61,12 +86,13 @@ export interface ProfileFullResponse {
   skills: string[]
 
   educations: EducationResponse[]
-  certifications: any[]
+  certifications: CertificationResponse[]
   experiences: any[]
 }
 
-// ====== API calls ======
-
+// =========================
+// API calls
+// =========================
 export const getMyProfile = async (): Promise<ProfileFullResponse> => {
   const res = await api.get("/profile/")
   return res.data
@@ -79,6 +105,7 @@ export const updateMyProfile = async (
   return res.data
 }
 
+// ---- education
 export const addEducation = async (
   data: EducationCreatePayload,
 ): Promise<EducationResponse> => {
@@ -91,6 +118,7 @@ export const deleteEducation = async (id: number) => {
   return res.data
 }
 
+// ---- experience (biarin any dulu)
 export const addExperience = async (data: any) => {
   const res = await api.post("/profile/experience", data)
   return res.data
@@ -101,13 +129,10 @@ export const deleteExperience = async (id: number) => {
   return res.data
 }
 
-export const addCertification = async (payload: {
-  name: string
-  organizer: string
-  year: number
-  description: string
-  file: File
-}) => {
+// ---- certification (multipart)
+export const addCertification = async (
+  payload: AddCertificationPayload,
+): Promise<CertificationResponse> => {
   const formData = new FormData()
   formData.append("name", payload.name)
   formData.append("organizer", payload.organizer)
@@ -115,10 +140,13 @@ export const addCertification = async (payload: {
   formData.append("description", payload.description)
   formData.append("file", payload.file)
 
+  if (payload.bidang_keahlian) {
+    formData.append("bidang_keahlian", payload.bidang_keahlian)
+  }
+
   const res = await api.post("/profile/certification", formData, {
     headers: { "Content-Type": "multipart/form-data" },
   })
-
   return res.data
 }
 
@@ -127,6 +155,7 @@ export const deleteCertification = async (id: number) => {
   return res.data
 }
 
+// ---- avatar
 export const uploadAvatar = async (file: File) => {
   const formData = new FormData()
   formData.append("file", file)
@@ -134,7 +163,6 @@ export const uploadAvatar = async (file: File) => {
   const res = await api.post("/profile/avatar", formData, {
     headers: { "Content-Type": "multipart/form-data" },
   })
-
   return res.data
 }
 
