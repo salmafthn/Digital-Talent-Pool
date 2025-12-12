@@ -154,12 +154,12 @@ export function DataDiriSection({ locked, onLock, onNext, initialData }: Props) 
         gender: form.gender, // nanti kalau backend pakai enum "MALE"/"FEMALE" tinggal mapping di sini
         birth_date: form.tanggalLahir,
         email: form.email,
-        whatsapp: form.wa,
-        linkedin: form.linkedin,
-        instagram: form.instagram,
-        portofolio: form.portofolio,
+        phone: form.wa,
+        linkedin_url: form.linkedin,
+        instagram_username: form.instagram,
+        portfolio_url: form.portofolio,
         address: form.alamat,
-        about: form.tentang,
+        bio: form.tentang,
         skills: form.keterampilan,
       })
 
