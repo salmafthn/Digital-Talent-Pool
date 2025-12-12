@@ -6,12 +6,13 @@ from app.schemas import ai_schema
 from app.api import deps
 from app import models
 from datetime import date
+from typing import List
 
 router = APIRouter(prefix="/ai", tags=["AI Integration"])
 ai_service = AIService()
 
-
-
+# --- KONFIGURASI BATAS CHAT ---
+MAX_CHAT_TURNS = 5  # Maksimal 5 kali tanya jawab
 
 def calculate_duration(start_date: date, end_date: date = None):
     if not end_date:
@@ -22,20 +23,16 @@ def calculate_duration(start_date: date, end_date: date = None):
     return f"{years} tahun {months} bulan"
 
 def format_profile_for_ai(user: models.User, profile: models.Profile, educations, experiences, certifications):
-    # Ambil data pendidikan terakhir
     last_edu = educations[0] if educations else None
     edu_str = f"Jenjang Pendidikan: {last_edu.level if last_edu else '-'}\nJurusan: {last_edu.major if last_edu else '-'}"
     
-    # Ambil data pengalaman terakhir
     last_exp = experiences[0] if experiences else None
     exp_str = f"Posisi Pekerjaan: {last_exp.job_title if last_exp else '-'}\nDeskripsi Tugas: {last_exp.description if last_exp else '-'}\nLama Bekerja: {calculate_duration(last_exp.start_date, last_exp.end_date) if last_exp else '-'}"
     
-    # Gabungkan Skills
     skills_str = ", ".join(profile.skills) if profile.skills else "-"
-    
-    # Gabungkan Sertifikasi
     cert_str = ", ".join([c.name for c in certifications]) if certifications else "-"
  
+    # Prompt Awal: Data User
     prompt_text = (
         f"Berikut data singkat saya:\n"
         f"{edu_str}\n"
@@ -43,9 +40,8 @@ def format_profile_for_ai(user: models.User, profile: models.Profile, educations
         f"Sertifikasi: {cert_str}\n"
         f"{exp_str}\n"
         f"Keterampilan: {skills_str}\n\n"
-        f"Berdasarkan data di atas, tolong langsung bertindak sebagai interviewer. "
-        f"Jangan berikan rangkuman atau saran dulu. "
-        f"Langsung ajukan pertanyaan pertama Anda untuk menggali kompetensi saya."
+        f"[INSTRUKSI AWAL]: Sebagai Interviewer, tugasmu adalah memvalidasi data di atas. "
+        f"Jangan berikan rangkuman. Langsung ajukan 1 pertanyaan pembuka untuk memverifikasi salah satu poin data (misal Pendidikan atau Pengalaman)."
     )
     return prompt_text
 
@@ -62,13 +58,20 @@ async def start_interview_session(
 
     user_data_prompt = format_profile_for_ai(current_user, profile, educations, experiences, certifications)
     
-    # 3. Reset Session Lama
+    # 1. Reset Session Lama (Hapus chat sebelumnya agar mulai dari 0)
     db.query(models.InterviewLog).filter(models.InterviewLog.user_id == current_user.id).delete()
     db.commit()
 
+    # 2. System Prompt Awal
     system_instruction = {
         "role": "system",
-        "content": "Anda adalah interviewer dari platform talenta digital Diploy khusus Area Fungsi. Tugas Anda adalah menggali detail kompetensi talenta berdasarkan data awal yang diberikan, meluruskan jawaban yang kurang relevan, dan memastikan informasi yang terkumpul cukup tajam untuk pemetaan Area Fungsi dan Level Okupasi. Gunakan bahasa Indonesia yang baik dan benar, tetap profesional, dan jangan menggunakan bahasa gaul atau singkatan informal."
+        "content": (
+            "Anda adalah interviewer profesional dari platform talenta digital Diploy. "
+            "Tugas Anda: Menggali kompetensi user berdasarkan data profil yang diberikan. "
+            "Gaya Bicara: Profesional, sopan, Bahasa Indonesia baku, to the point. "
+            "PENTING: Jangan bertanya hal yang sama berulang kali. "
+            "Setiap pertanyaan harus menggali aspek BERBEDA (misal: jika sudah tanya Pendidikan, tanya Sertifikasi, lalu tanya Skill)."
+        )
     }
 
     ai_result = await ai_service.get_interview_reply(
@@ -86,52 +89,78 @@ async def start_interview_session(
 
     return ai_result
 
-# --- [BAGIAN YANG HILANG: ENDPOINT REPLY CHAT] ---
+
 @router.post("/interview", response_model=ai_schema.InterviewResponse)
 async def chat_interview(
     request: ai_schema.InterviewRequest,
     current_user: models.User = Depends(deps.get_current_user),
     db: Session = Depends(get_db)
 ):
-    # 1. Ambil History Chat Sebelumnya dari Database
+    # 1. Ambil History Chat Sebelumnya
     past_logs = db.query(models.InterviewLog).filter(
         models.InterviewLog.user_id == current_user.id
     ).order_by(models.InterviewLog.created_at.asc()).all()
     
-    # 2. Susun History untuk dikirim ke AI
+    # 2. Hitung jumlah giliran chat saat ini
+    current_turn = len(past_logs) # Jumlah chat yang sudah terjadi
+    remaining_turns = MAX_CHAT_TURNS - current_turn
+    
+    # 3. Tentukan Strategi Prompt Berdasarkan Giliran (Turn)
+    
+    if remaining_turns <= 0:
+        # --- MODE FINAL (Force Closing) ---
+        instruction_add_on = (
+            "\n\n[INSTRUKSI SISTEM - PENTING!]: "
+            "Ini adalah akhir sesi interview. JANGAN BERTANYA LAGI. "
+            "Tugasmu sekarang: "
+            "1. Berikan ucapan terima kasih singkat. "
+            "2. Berikan penilaian Area Fungsi dan Level (1-5) berdasarkan seluruh percakapan. "
+            "3. WAJIB akhiri respons dengan format persis seperti ini: "
+            "[END OF CHAT] ...ringkasan... <RESULT>{\"area_fungsi\":\"Nama Area\", \"level\":Angka}</RESULT>"
+        )
+    else:
+        # --- MODE PROBING (Cari Topik Lain) ---
+        instruction_add_on = (
+            f"\n\n[INSTRUKSI SISTEM - Sisa Pertanyaan: {remaining_turns}]: "
+            "1. Berikan respon singkat atas jawaban user. "
+            "2. LIHAT DATA PROFIL AWAL user. "
+            "3. AJUKAN 1 PERTANYAAN BARU tentang aspek profil yang BELUM dibahas. "
+            "   - Jika sebelumnya membahas Pendidikan, sekarang tanya tentang Sertifikasi atau Pengalaman Kerja atau Skill. "
+            "   - JANGAN menggali topik yang sama terus menerus (jangan deep-dive). "
+            "   - Pindah topik agar semua data profil terverifikasi. "
+            "4. Jangan gunakan label 'Respons:' atau 'Pertanyaan:'."
+        )
+
+    # 4. Susun History
     history_payload = []
     
+    # System Prompt Dasar (Selalu diingatkan)
     history_payload.append({
         "role": "system",
-        "content": "Anda adalah interviewer dari platform talenta digital Diploy khusus Area Fungsi. Tugas Anda adalah menggali detail kompetensi talenta berdasarkan data awal yang diberikan, meluruskan jawaban yang kurang relevan, dan memastikan informasi yang terkumpul cukup tajam untuk pemetaan Area Fungsi dan Level Okupasi. Gunakan bahasa Indonesia yang baik dan benar, tetap profesional, dan jangan menggunakan bahasa gaul atau singkatan informal."
+        "content": "Anda adalah interviewer. Fokus: Validasi breadth (keluasan) kompetensi user, bukan cuma kedalaman satu topik."
     }) 
+
     for log in past_logs:
         history_payload.append({"role": "user", "content": log.user_prompt})
         history_payload.append({"role": "assistant", "content": log.ai_response})
      
-    prompt_for_ai = (
-        f"{request.prompt}\n\n"
-        "(Instruksi Sistem: Berikan respons singkat terhadap jawaban di atas, "
-        "lalu LANGSUNG ajukan pertanyaan interview berikutnya yang relevan. "
-        "Jangan berhenti tanpa mengajukan pertanyaan, kecuali jika data sudah cukup "
-        "untuk penilaian maka keluarkan tag <RESULT>.)"
-    )
+    # 5. Gabungkan Prompt User + Instruksi Rahasia (Injection)
+    prompt_for_ai = f"{request.prompt}{instruction_add_on}"
 
-    # Kirim prompt yang sudah dimodifikasi ke AI
+    # 6. Kirim ke AI
     ai_result = await ai_service.get_interview_reply(prompt_for_ai, history_payload)
     
-    # 4. Simpan Chat BARU ke Database (TAPI YANG DISIMPAN VERSI ASLI/BERSIH)
+    # 7. Simpan Chat BARU ke Database (Simpan prompt asli user, tanpa instruksi rahasia)
     new_log = models.InterviewLog(
         user_id=current_user.id,
-        user_prompt=request.prompt, # Simpan yang asli (tanpa instruksi rahasia)
+        user_prompt=request.prompt, 
         ai_response=ai_result.data.answer
     )
     db.add(new_log)
     db.commit()
     
     return ai_result
- 
-from typing import List # Pastikan import List ada di paling atas file
+
 @router.get("/history", response_model=List[ai_schema.ChatLogResponse])
 def get_chat_history(
     current_user: models.User = Depends(deps.get_current_user),
@@ -143,34 +172,25 @@ def get_chat_history(
     
     return logs
 
-# 2. Talent Mapping 
+# 2. Talent Mapping (Tetap Sama)
 @router.post("/mapping", response_model=ai_schema.MappingResponse)
 async def talent_mapping(
-    # request: ai_schema.MappingRequest, <--- Kita bisa abaikan input frontend
     current_user: models.User = Depends(deps.get_current_user),
     db: Session = Depends(get_db)
 ):
-    # 1. Ambil semua riwayat chat user ini dari Database
     logs = db.query(models.InterviewLog).filter(
         models.InterviewLog.user_id == current_user.id
     ).order_by(models.InterviewLog.created_at.asc()).all()
     
     if not logs:
-        # Kalau belum pernah chat, kirim pesan kosong atau error
         full_text = "User belum melakukan interview."
     else:
-        # 2. Gabungkan (Concat) jadi satu string panjang
-        # Format: "User: ... AI: ... User: ... AI: ..."
         full_text = " ".join([
             f"User berkata: {log.user_prompt}. AI menjawab: {log.ai_response}." 
             for log in logs
         ])
 
-    # 3. Kirim String Raksasa itu ke AI Mapping
     result = await ai_service.analyze_talent_mapping(full_text)
-    
-    # (Opsional) Simpan hasil mapping ke tabel Profile atau tabel baru
-    
     return result
  
 @router.post("/questions", response_model=ai_schema.QuestionResponse)

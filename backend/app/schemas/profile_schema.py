@@ -179,7 +179,7 @@ class ProfileFullResponse(BaseModel):
     id: int
     user_id: int
     
-    # --- TAMBAHKAN BAGIAN INI AGAR MUNCUL DI JSON ---
+    email: Optional[str] = None
     nik: Optional[str] = None
     full_name: Optional[str] = None
     gender: Optional[str] = None
