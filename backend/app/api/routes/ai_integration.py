@@ -104,28 +104,33 @@ async def chat_interview(
     history_payload.append({
         "role": "system",
         "content": "Anda adalah interviewer dari platform talenta digital Diploy khusus Area Fungsi. Tugas Anda adalah menggali detail kompetensi talenta berdasarkan data awal yang diberikan, meluruskan jawaban yang kurang relevan, dan memastikan informasi yang terkumpul cukup tajam untuk pemetaan Area Fungsi dan Level Okupasi. Gunakan bahasa Indonesia yang baik dan benar, tetap profesional, dan jangan menggunakan bahasa gaul atau singkatan informal."
-    })
-
-    # Masukkan chat lama user & assistant
+    }) 
     for log in past_logs:
         history_payload.append({"role": "user", "content": log.user_prompt})
         history_payload.append({"role": "assistant", "content": log.ai_response})
+     
+    prompt_for_ai = (
+        f"{request.prompt}\n\n"
+        "(Instruksi Sistem: Berikan respons singkat terhadap jawaban di atas, "
+        "lalu LANGSUNG ajukan pertanyaan interview berikutnya yang relevan. "
+        "Jangan berhenti tanpa mengajukan pertanyaan, kecuali jika data sudah cukup "
+        "untuk penilaian maka keluarkan tag <RESULT>.)"
+    )
+
+    # Kirim prompt yang sudah dimodifikasi ke AI
+    ai_result = await ai_service.get_interview_reply(prompt_for_ai, history_payload)
     
-    # 3. Kirim Prompt Baru + History Lengkap ke AI
-    ai_result = await ai_service.get_interview_reply(request.prompt, history_payload)
-    
-    # 4. Simpan Chat BARU ke Database
+    # 4. Simpan Chat BARU ke Database (TAPI YANG DISIMPAN VERSI ASLI/BERSIH)
     new_log = models.InterviewLog(
         user_id=current_user.id,
-        user_prompt=request.prompt,
+        user_prompt=request.prompt, # Simpan yang asli (tanpa instruksi rahasia)
         ai_response=ai_result.data.answer
     )
     db.add(new_log)
     db.commit()
     
     return ai_result
-
-# --- [BAGIAN YANG HILANG: ENDPOINT HISTORY BUAT FRONTEND] ---
+ 
 from typing import List # Pastikan import List ada di paling atas file
 @router.get("/history", response_model=List[ai_schema.ChatLogResponse])
 def get_chat_history(
