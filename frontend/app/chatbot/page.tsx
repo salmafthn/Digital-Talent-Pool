@@ -1,96 +1,204 @@
-"use client"
+"use client";
 
-import { useEffect, useRef, useState } from "react"
-import { useRouter } from 'next/navigation'
-import Navbar from "@/components/navbar"
-import Footer from "@/components/footer"
-import { ChatBubble } from "@/components/chat/ChatBubble"
-import { ChatInput } from "@/components/chat/ChatInput"
-import { Button } from "@/components/ui/button"
+import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import Navbar from "@/components/navbar";
+import Footer from "@/components/footer";
+import { ChatBubble } from "@/components/chat/ChatBubble";
+import { ChatInput } from "@/components/chat/ChatInput";
+import { Button } from "@/components/ui/button";
+import { useToast } from "@/hooks/use-toast";
+import {
+  startInterview,
+  sendReply,
+  getChatHistory,
+  type ChatLog,
+} from "@/services/aiService";
 
-type Message = { id: number; role: "ai" | "user"; text: string; kind?: "invite" }
-
-const seedMessages: Message[] = [
-  {
-    id: 1,
-    role: "ai",
-    text: "Halo! Selamat datang di Diploy. Berdasarkan profil Anda, saya telah menganalisis kompetensi Anda dan saya akan menanyakan beberapa hal teknis untuk memperdalam kedekatan skill anda dengan level yang tersedia.",
-  },
-  {
-    id: 2,
-    role: "ai",
-    text: "Untuk memberikan rekomendasi yang lebih akurat, saya ingin tahu: Tool atau teknologi apa saja yang sudah Anda kuasai? Misalnya: SQL, Python, Power BI, TensorFlow, atau yang lainnya?",
-  },
-  {
-    id: 3,
-    role: "user",
-    text: "Saya sudah familiar dengan Python, SQL, dan Power BI. Saya juga sedang belajar machine learning dengan TensorFlow.",
-  },
-  {
-    id: 4,
-    role: "ai",
-    text: "Bagus! Dengan pengalaman tersebut, saya merekomendasikan Anda untuk mengikuti assessment lebih lanjut guna memvalidasi level yang sudah saya petakan di beberapa area fungsi TI. Hasilnya akan membantu Anda menemukan jalur karir yang paling sesuai.",
-    kind: "invite",
-  },
-]
+type Message = {
+  id: number;
+  role: "ai" | "user";
+  text: string;
+  kind?: "invite"; // Penanda jika ini pesan penutup
+};
 
 export default function ChatbotPage() {
-  const router = useRouter()
-  const [messages, setMessages] = useState<Message[]>(seedMessages)
-  const [userPhoto, setUserPhoto] = useState<string | null>(null)
-  const [userHasTyped, setUserHasTyped] = useState(false)
-  const scrollerRef = useRef<HTMLDivElement>(null)
+  const router = useRouter();
+  const { toast } = useToast();
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [userPhoto, setUserPhoto] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isInterviewFinished, setIsInterviewFinished] = useState(false);
 
+  // State untuk menyimpan hasil mapping sementara sebelum user klik tombol
+  const [finalMappingResult, setFinalMappingResult] = useState<any>(null);
+
+  const scrollerRef = useRef<HTMLDivElement>(null);
+
+  // 1. Load User Photo & Check History saat Load
   useEffect(() => {
     if (typeof window !== "undefined") {
-      const raw = localStorage.getItem("user")
-      if (raw)
+      const raw = localStorage.getItem("user");
+      if (raw) {
         try {
-          setUserPhoto(JSON.parse(raw).photoUrl ?? null)
+          setUserPhoto(JSON.parse(raw).photoUrl ?? null);
         } catch {}
+      }
     }
-  }, [])
+    initializeChat();
+  }, []);
 
+  // 2. Auto Scroll ke bawah
   useEffect(() => {
     scrollerRef.current?.scrollTo({
       top: scrollerRef.current.scrollHeight,
       behavior: "smooth",
-    })
-  }, [messages])
+    });
+  }, [messages]);
 
-  const lastMessage = messages[messages.length - 1]
-  const showCTA = userHasTyped && lastMessage?.role === "ai" && lastMessage?.kind === "invite"
+  // Fungsi Inisialisasi: Cek history, kalau kosong -> Start New Session
+  const initializeChat = async () => {
+    try {
+      setIsLoading(true);
+      const history = await getChatHistory();
 
-  function handleSendMessage(text: string) {
-    setUserHasTyped(true)
-    const userMessage: Message = {
-      id: messages.length + 1,
-      role: "user",
-      text,
-    }
-    setMessages((prev) => [...prev, userMessage])
+      if (history && history.length > 0) {
+        // Mapping dari format DB (user_prompt, ai_response) ke format UI (Message[])
+        const formattedMessages: Message[] = [];
+        history.forEach((log: ChatLog, index) => {
+          // Pesan User
+          formattedMessages.push({
+            id: index * 2 + 1,
+            role: "user",
+            text: log.user_prompt,
+          });
 
-    setTimeout(() => {
-      const botReply: Message = {
-        id: messages.length + 2,
-        role: "ai",
-        text: "Terima kasih atas informasinya. Untuk mendapatkan penilaian yang akurat, saya merekomendasikan Anda segera mengikuti assessment untuk memvalidasi level kompetensi Anda di berbagai area fungsi TI. Silahkan klik tombol dibawah ini untuk melihat pemetaan level anda! ",
-        kind: "invite",
+          // Pesan AI
+          const aiMsg = parseAIResponse(log.ai_response, index * 2 + 2);
+          formattedMessages.push(aiMsg);
+        });
+        setMessages(formattedMessages);
+      } else {
+        // Belum ada history, mulai sesi baru
+        const res = await startInterview();
+        const initialAiMsg = parseAIResponse(res.data.answer, 1);
+        setMessages([initialAiMsg]);
       }
-      setMessages((prev) => [...prev, botReply])
-    }, 500)
+    } catch (error) {
+      console.error("Gagal memuat chat", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Gagal menghubungkan ke AI Interviewer.",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Fungsi helper untuk mendeteksi tag <RESULT>
+  const parseAIResponse = (text: string, id: number): Message => {
+    // FIX REGEX: Menggunakan [\s\S] pengganti flag /s agar kompatibel ES6
+    const resultMatch = text.match(/<RESULT>([\s\S]*?)<\/RESULT>/);
+    let cleanText = text;
+    let kind: "invite" | undefined = undefined;
+
+    if (resultMatch) {
+      // Chat selesai
+      setIsInterviewFinished(true);
+      kind = "invite";
+
+      // Hapus tag result dari teks yang ditampilkan agar rapi
+      cleanText = text.replace(/<RESULT>[\s\S]*?<\/RESULT>/, "").trim();
+
+      // Simpan hasil JSON mapping
+      try {
+        const jsonResult = JSON.parse(resultMatch[1]);
+        setFinalMappingResult(jsonResult);
+      } catch (e) {
+        console.error("Gagal parse JSON result", e);
+      }
+    } else if (text.includes("[END OF CHAT]")) {
+      // Fallback jika regex gagal tapi ada marker text
+      setIsInterviewFinished(true);
+      kind = "invite";
+      cleanText = text.replace("[END OF CHAT]", "").trim();
+    }
+
+    return {
+      id,
+      role: "ai",
+      text: cleanText,
+      kind,
+    };
+  };
+
+  async function handleSendMessage(text: string) {
+    if (!text.trim()) return;
+
+    // 1. Tampilkan pesan user segera (Optimistic UI)
+    const userMsgId = messages.length + 1;
+    const userMessage: Message = {
+      id: userMsgId,
+      role: "user",
+      text: text,
+    };
+    setMessages((prev) => [...prev, userMessage]);
+    setIsLoading(true);
+
+    try {
+      // 2. Kirim ke Backend
+      const res = await sendReply(text);
+
+      // 3. Tampilkan balasan AI
+      const aiMsg = parseAIResponse(res.data.answer, userMsgId + 1);
+      setMessages((prev) => [...prev, aiMsg]);
+    } catch (error) {
+      console.error(error);
+      toast({
+        variant: "destructive",
+        title: "Gagal mengirim pesan",
+        description: "Terjadi kesalahan pada server AI.",
+      });
+    } finally {
+      setIsLoading(false);
+    }
   }
 
   function handleCTA() {
-    const mapping = {
-      DSC: { area: "Data Science & Cloud", level: 7, progress: 30, status: "Assessed", notes: "Kompeten – rekomendasi pekerjaan & pembelajaran tersedia." },
-      TKTI: { area: "Tata Kelola TI", level: 3, progress: 50, status: "Unassessed", notes: "Perlu assessment untuk validasi level." },
-      CYBER: { area: "Cybersecurity", level: 2, progress: 20, status: "Unassessed", notes: "Perlu assessment untuk validasi level." },
-      PPD: { area: "PPD", level: 1, progress: 10, status: "Unassessed", notes: "" },
-      TI: { area: "Teknologi Informasi", level: 4, progress: 40, status: "Unassessed", notes: "" },
-      LTI: { area: "Layanan TI", level: 5, progress: 60, status: "Unassessed", notes: "" },
-    };
-    localStorage.setItem("mapping", JSON.stringify(mapping));
+    if (finalMappingResult) {
+      // Update LocalStorage Mapping dengan hasil dari AI
+      // Format AI: { "area_fungsi": "...", "level": 5 }
+
+      // Kita ambil mapping lama
+      const oldMappingRaw = localStorage.getItem("mapping");
+      let mapping = oldMappingRaw ? JSON.parse(oldMappingRaw) : {};
+
+      // Mapping Key Area Fungsi dari AI ke Key Frontend (DSC, TKTI, dll)
+      let areaKey = "TKTI"; // Default
+      const areaName = finalMappingResult.area_fungsi || "";
+      const level = finalMappingResult.level || 1;
+
+      if (areaName.includes("Data") || areaName.includes("Sains"))
+        areaKey = "DSC";
+      else if (areaName.includes("Keamanan") || areaName.includes("Siber"))
+        areaKey = "CYBER";
+      else if (areaName.includes("Produk")) areaKey = "PPD";
+      else if (areaName.includes("Layanan")) areaKey = "LTI";
+      else if (areaName.includes("Infrastruktur")) areaKey = "TI";
+
+      // Update state mapping
+      mapping[areaKey] = {
+        area: areaName,
+        level: level,
+        progress: level * 20, // Asumsi progress dummy
+        status: "Assessed",
+        notes: "Hasil penilaian AI Interview.",
+      };
+
+      localStorage.setItem("mapping", JSON.stringify(mapping));
+    }
+
     router.push("/dashboard");
   }
 
@@ -104,14 +212,31 @@ export default function ChatbotPage() {
               Konsultasi Kompetensi
             </h1>
 
-            <div ref={scrollerRef} className="flex-1 space-y-4 sm:space-y-6 mb-4 overflow-y-auto pr-1">
+            <div
+              ref={scrollerRef}
+              className="flex-1 space-y-4 sm:space-y-6 mb-4 overflow-y-auto pr-1"
+            >
+              {messages.length === 0 && isLoading && (
+                <div className="text-center text-gray-500 mt-10">
+                  Memulai sesi interview...
+                </div>
+              )}
+
               {messages.map((msg) => (
                 <ChatBubble key={msg.id} role={msg.role} userPhoto={userPhoto}>
                   {msg.text}
                 </ChatBubble>
               ))}
 
-              {showCTA && (
+              {isLoading && messages.length > 0 && (
+                <div className="flex justify-start animate-pulse">
+                  <div className="bg-blue-50 px-4 py-2 rounded-2xl text-xs text-blue-500">
+                    AI sedang mengetik...
+                  </div>
+                </div>
+              )}
+
+              {isInterviewFinished && (
                 <div className="pt-4 flex justify-center">
                   <Button
                     onClick={handleCTA}
@@ -123,13 +248,16 @@ export default function ChatbotPage() {
               )}
             </div>
 
-            <div className="border-t pt-4 mt-4">
-              <ChatInput onSend={handleSendMessage} />
-            </div>
+            {/* Input dimatikan jika interview selesai */}
+            {!isInterviewFinished && (
+              <div className="border-t pt-4 mt-4">
+                <ChatInput onSend={handleSendMessage} />
+              </div>
+            )}
           </div>
         </div>
       </main>
       <Footer />
     </div>
-  )
+  );
 }

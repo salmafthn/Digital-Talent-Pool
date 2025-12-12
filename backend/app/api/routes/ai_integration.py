@@ -11,9 +11,6 @@ from typing import List
 router = APIRouter(prefix="/ai", tags=["AI Integration"])
 ai_service = AIService()
 
-# --- KONFIGURASI BATAS CHAT ---
-MAX_CHAT_TURNS = 5  # Maksimal 5 kali tanya jawab
-
 def calculate_duration(start_date: date, end_date: date = None):
     if not end_date:
         end_date = date.today()
@@ -41,7 +38,7 @@ def format_profile_for_ai(user: models.User, profile: models.Profile, educations
         f"{exp_str}\n"
         f"Keterampilan: {skills_str}\n\n"
         f"[INSTRUKSI AWAL]: Sebagai Interviewer, tugasmu adalah memvalidasi data di atas. "
-        f"Jangan berikan rangkuman. Langsung ajukan 1 pertanyaan pembuka untuk memverifikasi salah satu poin data (misal Pendidikan atau Pengalaman)."
+        f"Jangan berikan rangkuman. Langsung ajukan 1 pertanyaan pembuka untuk memverifikasi salah satu poin data."
     )
     return prompt_text
 
@@ -58,36 +55,35 @@ async def start_interview_session(
 
     user_data_prompt = format_profile_for_ai(current_user, profile, educations, experiences, certifications)
     
-    # 1. Reset Session Lama (Hapus chat sebelumnya agar mulai dari 0)
+    # 1. Reset Session Lama
     db.query(models.InterviewLog).filter(models.InterviewLog.user_id == current_user.id).delete()
     db.commit()
 
-    # 2. System Prompt Awal
-    system_instruction = {
-        "role": "system",
-        "content": (
-            "Anda adalah interviewer profesional dari platform talenta digital Diploy. "
-            "Tugas Anda: Menggali kompetensi user berdasarkan data profil yang diberikan. "
-            "Gaya Bicara: Profesional, sopan, Bahasa Indonesia baku, to the point. "
-            "PENTING: Jangan bertanya hal yang sama berulang kali. "
-            "Setiap pertanyaan harus menggali aspek BERBEDA (misal: jika sudah tanya Pendidikan, tanya Sertifikasi, lalu tanya Skill)."
-        )
-    }
-
-    ai_result = await ai_service.get_interview_reply(
-        prompt=user_data_prompt,      
-        history=[system_instruction]  
-    )
+    # 2. Start Interview (Logic Hybrid Tim 3 / Tim 5)
+    # Service akan handle start session (untuk Tim 5) atau return prompt awal (untuk Tim 3)
+    result_dict = await ai_service.start_interview(user_data_prompt)
     
+    ai_response_text = result_dict["answer"]
+    session_id = result_dict.get("session_id") # Bisa None kalau pakai Tim 3
+
+    # Simpan Session ID (Jika pakai Tim 5)
+    if session_id:
+        profile.ai_session_id = session_id
+        db.add(profile)
+        
     new_log = models.InterviewLog(
         user_id=current_user.id,
         user_prompt=user_data_prompt,
-        ai_response=ai_result.data.answer
+        ai_response=ai_response_text
     )
     db.add(new_log)
     db.commit()
 
-    return ai_result
+    return ai_schema.InterviewResponse(
+        success=True,
+        message="Session started",
+        data={"answer": ai_response_text}
+    )
 
 
 @router.post("/interview", response_model=ai_schema.InterviewResponse)
@@ -96,61 +92,53 @@ async def chat_interview(
     current_user: models.User = Depends(deps.get_current_user),
     db: Session = Depends(get_db)
 ):
-    # 1. Ambil History Chat Sebelumnya
+    # 1. Ambil Profile untuk cek Session ID (Support Tim 5)
+    profile = db.query(models.Profile).filter(models.Profile.user_id == current_user.id).first()
+    session_id = profile.ai_session_id if profile else None
+
+    # 2. Ambil History Chat (Support Tim 3)
     past_logs = db.query(models.InterviewLog).filter(
         models.InterviewLog.user_id == current_user.id
     ).order_by(models.InterviewLog.created_at.asc()).all()
     
-    # 2. Hitung jumlah giliran chat saat ini
-    current_turn = len(past_logs) # Jumlah chat yang sudah terjadi
-    remaining_turns = MAX_CHAT_TURNS - current_turn
-    
-    # 3. Tentukan Strategi Prompt Berdasarkan Giliran (Turn)
-    
-    if remaining_turns <= 0:
-        # --- MODE FINAL (Force Closing) ---
-        instruction_add_on = (
-            "\n\n[INSTRUKSI SISTEM - PENTING!]: "
-            "Ini adalah akhir sesi interview. JANGAN BERTANYA LAGI. "
-            "Tugasmu sekarang: "
-            "1. Berikan ucapan terima kasih singkat. "
-            "2. Berikan penilaian Area Fungsi dan Level (1-5) berdasarkan seluruh percakapan. "
-            "3. WAJIB akhiri respons dengan format persis seperti ini: "
-            "[END OF CHAT] ...ringkasan... <RESULT>{\"area_fungsi\":\"Nama Area\", \"level\":Angka}</RESULT>"
-        )
-    else:
-        # --- MODE PROBING (Cari Topik Lain) ---
-        instruction_add_on = (
-            f"\n\n[INSTRUKSI SISTEM - Sisa Pertanyaan: {remaining_turns}]: "
-            "1. Berikan respon singkat atas jawaban user. "
-            "2. LIHAT DATA PROFIL AWAL user. "
-            "3. AJUKAN 1 PERTANYAAN BARU tentang aspek profil yang BELUM dibahas. "
-            "   - Jika sebelumnya membahas Pendidikan, sekarang tanya tentang Sertifikasi atau Pengalaman Kerja atau Skill. "
-            "   - JANGAN menggali topik yang sama terus menerus (jangan deep-dive). "
-            "   - Pindah topik agar semua data profil terverifikasi. "
-            "4. Jangan gunakan label 'Respons:' atau 'Pertanyaan:'."
-        )
-
-    # 4. Susun History
+    # 3. Susun History & System Prompt
     history_payload = []
     
-    # System Prompt Dasar (Selalu diingatkan)
+    # System Prompt: Instruksi Utama agar AI tahu kapan harus berhenti
     history_payload.append({
         "role": "system",
-        "content": "Anda adalah interviewer. Fokus: Validasi breadth (keluasan) kompetensi user, bukan cuma kedalaman satu topik."
+        "content": (
+            "Anda adalah interviewer profesional dari platform talenta digital Diploy. "
+            "Tugas Anda: Menggali kompetensi user secara mendalam namun efisien. "
+            "ATURAN PENTING: "
+            "1. Ajukan pertanyaan satu per satu. "
+            "2. Jika Anda menilai informasi sudah CUKUP untuk menentukan Area Fungsi dan Level (1-5), "
+            "   SEGERA akhiri sesi dengan ucapan terima kasih dan output format wajib: "
+            "   [END OF CHAT] <RESULT>{\"area_fungsi\":\"Nama Area\", \"level\":Angka}</RESULT>. "
+            "3. Jangan bertele-tele."
+        )
     }) 
 
     for log in past_logs:
         history_payload.append({"role": "user", "content": log.user_prompt})
         history_payload.append({"role": "assistant", "content": log.ai_response})
      
-    # 5. Gabungkan Prompt User + Instruksi Rahasia (Injection)
-    prompt_for_ai = f"{request.prompt}{instruction_add_on}"
+    # 4. Tambahkan Instruksi 'Hidden' di setiap prompt user agar AI tetap fokus
+    # Kita tidak lagi membatasi jumlah chat, tapi mengingatkan AI untuk cek kecukupan data.
+    prompt_for_ai = (
+        f"{request.prompt}\n\n"
+        "(Instruksi Sistem: Respon jawaban user, lalu ajukan pertanyaan selanjutnya. "
+        "Namun, jika data dirasa sudah cukup valid untuk penilaian, silakan akhiri dengan tag <RESULT>.)"
+    )
 
-    # 6. Kirim ke AI
-    ai_result = await ai_service.get_interview_reply(prompt_for_ai, history_payload)
+    # 5. Kirim ke AI Service
+    ai_result = await ai_service.get_interview_reply(
+        prompt=prompt_for_ai, 
+        history=history_payload,
+        session_id=session_id
+    )
     
-    # 7. Simpan Chat BARU ke Database (Simpan prompt asli user, tanpa instruksi rahasia)
+    # 6. Simpan Chat BARU ke Database (Simpan prompt asli user)
     new_log = models.InterviewLog(
         user_id=current_user.id,
         user_prompt=request.prompt, 

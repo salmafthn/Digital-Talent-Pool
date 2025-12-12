@@ -18,9 +18,10 @@ class EducationLevelEnum(str, Enum):
     LAINNYA = "Lainnya"
     
 class JobTypeEnum(str, Enum):
-    FULL_TIME = "Full Time"
-    CONTRACT = "Kontrak"
-    INTERNSHIP = "Magang"
+    KERJA = "Kerja"
+    FREELANCE = "Freelance"
+    MAGANG = "Magang" 
+    TIDAK_BEKERJA = "Tidak/belum bekerja"
 
 class FunctionalAreaEnum(str, Enum):
     IT_GOVERNANCE = "Tata Kelola Teknologi Informasi (IT Governance)"
@@ -102,8 +103,9 @@ class CertificationBase(BaseModel):
     name: str
     organizer: str
     year: int
-    proof_url: str # Sekarang jadi Wajib (tidak Optional lagi)
-    description: str # Sekarang jadi Wajib
+    proof_url: str  
+    description: str  
+    functional_area: str
 
     # Validasi Tahun: Rentang 5 tahun dari sekarang (Current Year +/- 5)
     @field_validator('year')

@@ -64,7 +64,7 @@ def seed_all(db: Session) -> None:
     logger.info("Membuat 10 User Dummy...")
     
     levels = ["SMA/SMK", "D3", "D4", "S1", "S2"]
-    job_types = ["Full Time", "Kontrak", "Magang"]
+    job_types = ["Kerja", "Freelance", "Magang", "Tidak/belum bekerja"]
     areas = [
         "Tata Kelola Teknologi Informasi (IT Governance)",
         "Pengembangan Produk Digital (Digital Product Development)",
