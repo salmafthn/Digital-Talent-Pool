@@ -6,10 +6,13 @@ import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Plus } from "lucide-react"
+import { addEducation, type EducationResponse, type EducationLevel } from "@/services/profileService"
+import { useToast } from "@/hooks/use-toast"
 
 type PendidikanItem = {
-  id: number
-  jenjang: string
+  id: number // id untuk UI (1..n)
+  backendId?: number // id dari DB (opsional, berguna kalau nanti mau delete)
+  jenjang: EducationLevel | ""
   namaInstitusi: string
   fakultas: string
   jurusan: string
@@ -22,9 +25,10 @@ type PendidikanItem = {
 
 interface Props {
   onNext: () => void
+  initialItems?: EducationResponse[]
+  onSaved?: () => Promise<void> | void
 }
 
-const STORAGE_KEY = "profilePendidikan"
 const MAX_PENDIDIKAN = 3
 
 function createEmptyItem(id: number): PendidikanItem {
@@ -42,92 +46,75 @@ function createEmptyItem(id: number): PendidikanItem {
   }
 }
 
-export function PendidikanSection({ onNext }: Props) {
+function toIntOrNull(v: string) {
+  const s = String(v).trim()
+  if (!s) return null
+  const n = Number(s)
+  return Number.isFinite(n) ? n : null
+}
+
+function mapApiToUi(list: EducationResponse[]): PendidikanItem[] {
+  if (!Array.isArray(list) || list.length === 0) return [createEmptyItem(1)]
+
+  // batasi max 3 buat UI
+  return list.slice(0, MAX_PENDIDIKAN).map((edu, idx) => ({
+    id: idx + 1,
+    backendId: edu.id,
+    jenjang: (edu.level ?? "") as any,
+    namaInstitusi: edu.institution_name ?? "",
+    fakultas: edu.faculty ?? "",
+    jurusan: edu.major ?? "",
+    tahunMasuk: edu.enrollment_year != null ? String(edu.enrollment_year) : "",
+    tahunLulus: edu.graduation_year != null ? String(edu.graduation_year) : "",
+    ipk: edu.gpa ?? "",
+    judulTugasAkhir: edu.final_project_title ?? "",
+    masihMenempuh: Boolean(edu.is_current),
+  }))
+}
+
+export function PendidikanSection({ onNext, initialItems, onSaved }: Props) {
+  const { toast } = useToast()
   const [items, setItems] = useState<PendidikanItem[]>([createEmptyItem(1)])
+  const [saving, setSaving] = useState(false)
 
-  // Load dari localStorage
+  // ✅ INI KUNCI UTAMA: load state dari BE
   useEffect(() => {
-    const raw = typeof window !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null
-    if (!raw) return
-
-    try {
-      const parsed = JSON.parse(raw)
-      if (Array.isArray(parsed)) {
-        setItems(
-          parsed.map((item: any, index: number) => ({
-            id: item.id ?? index + 1,
-            jenjang: item.jenjang ?? "",
-            namaInstitusi: item.namaInstitusi ?? "",
-            fakultas: item.fakultas ?? "",
-            jurusan: item.jurusan ?? "",
-            tahunMasuk: item.tahunMasuk ?? "",
-            tahunLulus: item.tahunLulus ?? "",
-            ipk: item.ipk ?? "",
-            judulTugasAkhir: item.judulTugasAkhir ?? "",
-            masihMenempuh: Boolean(item.masihMenempuh),
-          })),
-        )
-      } else if (parsed && typeof parsed === "object") {
-        // fallback kalau dulu pernah nyimpan single object
-        setItems([
-          {
-            id: 1,
-            jenjang: parsed.jenjang ?? "",
-            namaInstitusi: parsed.namaInstitusi ?? "",
-            fakultas: parsed.fakultas ?? "",
-            jurusan: parsed.jurusan ?? "",
-            tahunMasuk: parsed.tahunMasuk ?? "",
-            tahunLulus: parsed.tahunLulus ?? "",
-            ipk: parsed.ipk ?? "",
-            judulTugasAkhir: parsed.judulTugasAkhir ?? "",
-            masihMenempuh: Boolean(parsed.masihMenempuh),
-          },
-        ])
-      }
-    } catch {
-      // abaikan error parse
-    }
-  }, [])
+    setItems(mapApiToUi(initialItems ?? []))
+  }, [initialItems])
 
   function applyBusinessRules(item: PendidikanItem): PendidikanItem {
-    const isLainnya = item.jenjang === "LAINNYA"
+    const isLainnya = item.jenjang === "Lainnya"
     let next = { ...item }
 
     if (isLainnya) {
       next = {
         ...next,
-        namaInstitusi: "-",
-        fakultas: "-",
-        jurusan: "-",
-        tahunMasuk: "-",
-        tahunLulus: "-",
-        ipk: "-",
-        judulTugasAkhir: "-",
+        namaInstitusi: "",
+        fakultas: "",
+        jurusan: "",
+        tahunMasuk: "",
+        tahunLulus: "",
+        ipk: "",
+        judulTugasAkhir: "",
         masihMenempuh: false,
       }
     } else {
       if (next.masihMenempuh) {
-        next.tahunLulus = "-"
+        next.tahunLulus = ""
       }
     }
 
     return next
   }
 
-  function updateItem<K extends keyof PendidikanItem>(
-    id: number,
-    key: K,
-    value: PendidikanItem[K],
-  ) {
+  function updateItem<K extends keyof PendidikanItem>(id: number, key: K, value: PendidikanItem[K]) {
     setItems((prev) =>
       prev.map((item) => {
         if (item.id !== id) return item
-
         let updated = { ...item, [key]: value }
         if (key === "jenjang" || key === "masihMenempuh") {
           updated = applyBusinessRules(updated)
         }
-
         return updated
       }),
     )
@@ -144,29 +131,75 @@ export function PendidikanSection({ onNext }: Props) {
     setItems((prev) => (prev.length <= 1 ? prev : prev.filter((item) => item.id !== id)))
   }
 
-  function handleSave() {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(items))
-    onNext()
-  }
-
-  // VALIDASI: minimal pendidikan pertama terisi
-  // Aturan:
-  // - Jenjang wajib diisi
-  // - Kalau jenjang "LAINNYA" → cukup jenjang saja (field lain auto "-")
-  // - Selain itu, Nama Institusi juga wajib diisi
+  // VALIDASI MINIMAL sesuai aturan BE:
+  // - jika level != Lainnya: institution_name, major, enrollment_year wajib
   const isFirstItemValid = (() => {
     const first = items[0]
     if (!first) return false
     if (!first.jenjang) return false
-
-    if (first.jenjang === "LAINNYA") {
-      return true
-    }
-
+    if (first.jenjang === "Lainnya") return true
     if (!first.namaInstitusi.trim()) return false
-
+    if (!first.jurusan.trim()) return false
+    if (!toIntOrNull(first.tahunMasuk)) return false
     return true
   })()
+
+  async function handleSave() {
+    try {
+      setSaving(true)
+
+      const filled = items.filter((it) => it.jenjang)
+
+      const savedResponses: EducationResponse[] = []
+
+      for (const it of filled) {
+        const isLainnya = it.jenjang === "Lainnya"
+        const isSMA = it.jenjang === "SMA/SMK"
+
+        const payload = {
+          level: it.jenjang as EducationLevel,
+          institution_name: isLainnya ? null : (it.namaInstitusi.trim() || null),
+          faculty: isLainnya || isSMA ? null : (it.fakultas.trim() || null),
+          major: isLainnya ? null : (it.jurusan.trim() || null),
+          enrollment_year: isLainnya ? null : toIntOrNull(it.tahunMasuk),
+          graduation_year: isLainnya || it.masihMenempuh ? null : toIntOrNull(it.tahunLulus),
+          is_current: isLainnya ? false : Boolean(it.masihMenempuh),
+          gpa: isLainnya || isSMA ? null : (it.ipk.trim() || null),
+          final_project_title: isLainnya || isSMA ? null : (it.judulTugasAkhir.trim() || null),
+        }
+
+        const res = await addEducation(payload)
+        savedResponses.push(res)
+      }
+
+      // ✅ biar langsung kelihatan tanpa reload
+      setItems(mapApiToUi(savedResponses))
+
+      toast({
+        title: "Pendidikan tersimpan",
+        description: "Riwayat pendidikan berhasil disimpan ke database.",
+      })
+
+      // ✅ sinkronkan parent (biar kalau balik tab, datanya tetap ada)
+      await onSaved?.()
+
+      onNext()
+    } catch (err: any) {
+      console.error("Gagal simpan pendidikan:", err)
+      const detail =
+        err?.response?.data?.detail ??
+        err?.response?.data?.message ??
+        "Terjadi kesalahan saat menyimpan pendidikan."
+
+      toast({
+        variant: "destructive",
+        title: "Gagal menyimpan pendidikan",
+        description: typeof detail === "string" ? detail : "Coba lagi ya.",
+      })
+    } finally {
+      setSaving(false)
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -180,7 +213,7 @@ export function PendidikanSection({ onNext }: Props) {
       <div className="space-y-6">
         {items.map((item, index) => {
           const isSMA = item.jenjang === "SMA/SMK"
-          const isLainnya = item.jenjang === "LAINNYA"
+          const isLainnya = item.jenjang === "Lainnya"
 
           return (
             <div
@@ -190,24 +223,18 @@ export function PendidikanSection({ onNext }: Props) {
               <div className="flex items-center justify-between gap-3">
                 <h3 className="font-semibold">Pendidikan {index + 1}</h3>
                 {items.length > 1 && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    type="button"
-                    onClick={() => removeItem(item.id)}
-                  >
+                  <Button variant="ghost" size="sm" type="button" onClick={() => removeItem(item.id)}>
                     Hapus
                   </Button>
                 )}
               </div>
 
-              {/* Jenjang + Nama Institusi */}
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
                   <label className="text-sm font-medium">Jenjang</label>
                   <select
                     value={item.jenjang}
-                    onChange={(e) => updateItem(item.id, "jenjang", e.target.value)}
+                    onChange={(e) => updateItem(item.id, "jenjang", e.target.value as any)}
                     className="mt-1 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
                   >
                     <option value="">Pilih pendidikan</option>
@@ -217,7 +244,7 @@ export function PendidikanSection({ onNext }: Props) {
                     <option value="S1">S1</option>
                     <option value="S2">S2</option>
                     <option value="S3">S3</option>
-                    <option value="LAINNYA">Lainnya</option>
+                    <option value="Lainnya">Lainnya</option>
                   </select>
                 </div>
 
@@ -232,7 +259,6 @@ export function PendidikanSection({ onNext }: Props) {
                 </div>
               </div>
 
-              {/* Fakultas + Jurusan */}
               <div className="grid gap-4 sm:grid-cols-2">
                 {!isSMA && (
                   <div>
@@ -257,7 +283,6 @@ export function PendidikanSection({ onNext }: Props) {
                 </div>
               </div>
 
-              {/* Tahun Masuk - Tahun Lulus - IPK */}
               <div className="grid gap-4 sm:grid-cols-3">
                 <div>
                   <label className="text-sm font-medium">Tahun Masuk</label>
@@ -289,10 +314,7 @@ export function PendidikanSection({ onNext }: Props) {
                       }
                       className="h-4 w-4 border-slate-500 data-[state=checked]:bg-blue-500 data-[state=checked]:border-blue-500"
                     />
-                    <label
-                      htmlFor={`masih-menempuh-${item.id}`}
-                      className="text-xs sm:text-sm font-normal"
-                    >
+                    <label htmlFor={`masih-menempuh-${item.id}`} className="text-xs sm:text-sm font-normal">
                       Saya masih menempuh pendidikan ini
                     </label>
                   </div>
@@ -330,31 +352,20 @@ export function PendidikanSection({ onNext }: Props) {
         })}
       </div>
 
-      {/* Tombol Tambah + Simpan */}
       <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
         <div className="flex flex-col gap-1">
           {items.length < MAX_PENDIDIKAN ? (
-            <Button
-              type="button"
-              variant="outline"
-              onClick={addItem}
-            >
+            <Button type="button" variant="outline" onClick={addItem}>
               <Plus className="h-4 w-4 mr-2" />
               Tambah Pendidikan
             </Button>
           ) : (
-            <p className="text-xs text-muted-foreground">
-              Maksimal 3 riwayat pendidikan.
-            </p>
+            <p className="text-xs text-muted-foreground">Maksimal 3 riwayat pendidikan.</p>
           )}
         </div>
 
-        <Button
-          type="button"
-          onClick={handleSave}
-          disabled={!isFirstItemValid}  //  abu-abu kalau pendidikan pertama belum terisi minimal
-        >
-          Simpan &amp; Lanjut ke Sertifikasi
+        <Button type="button" onClick={handleSave} disabled={!isFirstItemValid || saving}>
+          {saving ? "Menyimpan..." : "Simpan & Lanjut ke Sertifikasi"}
         </Button>
       </div>
     </div>

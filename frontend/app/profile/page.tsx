@@ -1,127 +1,117 @@
-"use client";
+"use client"
 
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect, useCallback } from "react"
+import { useRouter } from "next/navigation"
 
-import Navbar from "@/components/navbar";
-import Footer from "@/components/footer";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useToast } from "@/hooks/use-toast";
-import PhotoUpload from "@/components/photo-upload";
-import {
-  DataDiriSection,
-  type DataDiriForm,
-} from "@/components/profile/data-diri-section";
-import { PendidikanSection } from "@/components/profile/pendidikan-section";
-import { SertifikasiSection } from "@/components/profile/sertifikasi-section";
-import { PengalamanSection } from "@/components/profile/pengalaman-section";
-import { getMyProfile } from "@/services/profileService";
+import Navbar from "@/components/navbar"
+import Footer from "@/components/footer"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { useToast } from "@/hooks/use-toast"
+import PhotoUpload from "@/components/photo-upload"
+import { DataDiriSection, type DataDiriForm } from "@/components/profile/data-diri-section"
+import { PendidikanSection } from "@/components/profile/pendidikan-section"
+import { SertifikasiSection } from "@/components/profile/sertifikasi-section"
+import { PengalamanSection } from "@/components/profile/pengalaman-section"
+import { getMyProfile, type ProfileFullResponse } from "@/services/profileService"
 
 type LockedFields = {
-  nik?: boolean;
-  nama?: boolean;
-  gender?: boolean;
-  tanggalLahir?: boolean;
-};
+  nik?: boolean
+  nama?: boolean
+  gender?: boolean
+  tanggalLahir?: boolean
+}
 
 export default function ProfilePage() {
-  const { toast } = useToast();
-  const router = useRouter();
+  const { toast } = useToast()
+  const router = useRouter()
 
-  const [locked, setLocked] = useState<LockedFields>({});
-  const [activeTab, setActiveTab] = useState("data-diri");
+  const [locked, setLocked] = useState<LockedFields>({})
+  const [activeTab, setActiveTab] = useState("data-diri")
 
-  // data awal untuk DataDiriSection (hasil dari backend)
-  const [dataDiriInitial, setDataDiriInitial] =
-    useState<Partial<DataDiriForm> | null>(null);
+  const [profile, setProfile] = useState<ProfileFullResponse | null>(null)
 
-  const [isLoadingProfile, setIsLoadingProfile] = useState(true);
+  const [dataDiriInitial, setDataDiriInitial] = useState<Partial<DataDiriForm> | null>(null)
+  const [isLoadingProfile, setIsLoadingProfile] = useState(true)
 
   // 1) Guard: kalau belum ada token, paksa ke /login
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    const token = localStorage.getItem("token");
-    if (!token) {
-      router.push("/login");
-    }
-  }, [router]);
+    if (typeof window === "undefined") return
+    const token = localStorage.getItem("token")
+    if (!token) router.push("/login")
+  }, [router])
 
   // 2) Ambil status field yang dikunci dari localStorage
   useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const raw = localStorage.getItem("profileLocked");
-    if (raw) {
-      try {
-        setLocked(JSON.parse(raw));
-      } catch {
-        // ignore parse error
-      }
+    if (typeof window === "undefined") return
+    const raw = localStorage.getItem("profileLocked")
+    if (!raw) return
+    try {
+      setLocked(JSON.parse(raw))
+    } catch {
+      // ignore
     }
-  }, []);
+  }, [])
 
-  // 3) Fetch profil dari backend, isi state & sinkronkan navbar
-  useEffect(() => {
-    const fetchProfile = async () => {
-      try {
-        setIsLoadingProfile(true);
-        const data: any = await getMyProfile();
+  const fetchProfile = useCallback(async () => {
+    try {
+      setIsLoadingProfile(true)
+      const data = await getMyProfile()
+      setProfile(data)
 
-        // a. mapping ke struktur DataDiriForm
-        const mapped: Partial<DataDiriForm> = {
-          nik: data.nik ?? "",
-          nama: data.full_name ?? "",
-          gender: data.gender ?? "",
-          tanggalLahir: data.birth_date ?? "",
-          email: data.email ?? "",
-          wa: data.phone ?? "",
-          linkedin: data.linkedin_url ?? "",
-          instagram: data.instagram_username ?? "",
-          portofolio: data.portfolio_url ?? "",
-          alamat: data.address ?? "",
-          tentang: data.bio ?? "",
-          keterampilan: Array.isArray(data.skills) ? data.skills : [],
-        };
-
-        setDataDiriInitial(mapped);
-
-        // b. simpan data user untuk Navbar
-        if (typeof window !== "undefined") {
-          const userData = {
-            name: data.username || data.full_name || "Pengguna",
-            email: data.email || "",
-          };
-          const userJson = JSON.stringify(userData);
-          localStorage.setItem("user", userJson);
-
-          // c. trigger event storage supaya Navbar langsung update
-          window.dispatchEvent(
-            new StorageEvent("storage", {
-              key: "user",
-              newValue: userJson,
-            })
-          );
-        }
-      } catch (error) {
-        console.error("Gagal memuat profil dari backend", error);
-        toast({
-          variant: "destructive",
-          title: "Gagal memuat profil",
-          description: "Profil sementara masih kosong. Coba lagi nanti.",
-        });
-      } finally {
-        setIsLoadingProfile(false);
+      // mapping ke DataDiriForm
+      const mapped: Partial<DataDiriForm> = {
+        nik: data.nik ?? "",
+        nama: data.full_name ?? "",
+        gender: data.gender ?? "",
+        tanggalLahir: data.birth_date ?? "",
+        email: data.email ?? "",
+        wa: data.phone ?? "",
+        linkedin: data.linkedin_url ?? "",
+        instagram: data.instagram_username ?? "",
+        portofolio: data.portfolio_url ?? "",
+        alamat: data.address ?? "",
+        tentang: data.bio ?? "",
+        keterampilan: Array.isArray(data.skills) ? data.skills : [],
       }
-    };
+      setDataDiriInitial(mapped)
 
-    fetchProfile();
-  }, [toast]);
+      // sinkronkan navbar
+      if (typeof window !== "undefined") {
+        const userData = {
+          name: data.full_name || "Pengguna",
+          email: data.email || "",
+        }
+        const userJson = JSON.stringify(userData)
+        localStorage.setItem("user", userJson)
+        window.dispatchEvent(
+          new StorageEvent("storage", {
+            key: "user",
+            newValue: userJson,
+          }),
+        )
+      }
+    } catch (error) {
+      console.error("Gagal memuat profil dari backend", error)
+      toast({
+        variant: "destructive",
+        title: "Gagal memuat profil",
+        description: "Profil sementara masih kosong. Coba lagi nanti.",
+      })
+    } finally {
+      setIsLoadingProfile(false)
+    }
+  }, [toast])
+
+  // 3) Fetch profil dari backend
+  useEffect(() => {
+    fetchProfile()
+  }, [fetchProfile])
 
   function handleLockFields(partial: Partial<LockedFields>) {
-    const next = { ...locked, ...partial };
-    setLocked(next);
+    const next = { ...locked, ...partial }
+    setLocked(next)
     if (typeof window !== "undefined") {
-      localStorage.setItem("profileLocked", JSON.stringify(next));
+      localStorage.setItem("profileLocked", JSON.stringify(next))
     }
   }
 
@@ -139,25 +129,17 @@ export default function ProfilePage() {
               Ayo Lengkapi Profilemu!
             </h1>
 
-            <Tabs
-              value={activeTab}
-              onValueChange={setActiveTab}
-              className="w-full"
-            >
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
               <TabsList className="grid grid-cols-2 sm:grid-cols-4 mb-6 w-full">
                 <TabsTrigger value="data-diri">Data Diri</TabsTrigger>
                 <TabsTrigger value="pendidikan">Pendidikan</TabsTrigger>
-                <TabsTrigger value="sertifikasi">
-                  Pelatihan dan Sertifikasi
-                </TabsTrigger>
+                <TabsTrigger value="sertifikasi">Pelatihan dan Sertifikasi</TabsTrigger>
                 <TabsTrigger value="pengalaman">Pengalaman</TabsTrigger>
               </TabsList>
 
               <TabsContent value="data-diri" className="space-y-4">
                 {isLoadingProfile && !dataDiriInitial ? (
-                  <p className="text-sm text-slate-500">
-                    Memuat data profil...
-                  </p>
+                  <p className="text-sm text-slate-500">Memuat data profil...</p>
                 ) : (
                   <DataDiriSection
                     locked={locked}
@@ -171,13 +153,13 @@ export default function ProfilePage() {
               <TabsContent value="pendidikan" className="space-y-4">
                 <PendidikanSection
                   onNext={() => setActiveTab("sertifikasi")}
+                  initialItems={profile?.educations ?? []}
+                  onSaved={fetchProfile}
                 />
               </TabsContent>
 
               <TabsContent value="sertifikasi" className="space-y-4">
-                <SertifikasiSection
-                  onNext={() => setActiveTab("pengalaman")}
-                />
+                <SertifikasiSection onNext={() => setActiveTab("pengalaman")} />
               </TabsContent>
 
               <TabsContent value="pengalaman" className="space-y-4">
@@ -189,5 +171,5 @@ export default function ProfilePage() {
       </main>
       <Footer />
     </div>
-  );
+  )
 }
