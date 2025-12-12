@@ -105,7 +105,7 @@ class CertificationBase(BaseModel):
     year: int
     proof_url: str  
     description: str  
-    functional_area: str
+    bidang_keahlian: str
 
     # Validasi Tahun: Rentang 5 tahun dari sekarang (Current Year +/- 5)
     @field_validator('year')

@@ -74,7 +74,7 @@ class Certification(Base):
     proof_url = Column(String)
     description = Column(Text)
      
-    functional_area = Column(String, nullable=True) 
+    bidang_keahlian = Column(String, nullable=True) 
  
 
     profile = relationship("Profile", back_populates="certifications")

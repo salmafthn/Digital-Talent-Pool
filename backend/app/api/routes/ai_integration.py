@@ -12,34 +12,89 @@ router = APIRouter(prefix="/ai", tags=["AI Integration"])
 ai_service = AIService()
 
 def calculate_duration(start_date: date, end_date: date = None):
+    if not start_date:
+        return "0 tahun 0 bulan 0 hari"
+        
     if not end_date:
         end_date = date.today()
+        
     delta = end_date - start_date
     years = delta.days // 365
     months = (delta.days % 365) // 30
-    return f"{years} tahun {months} bulan"
+    days = (delta.days % 365) % 30
+    
+    return f"{years} tahun {months} bulan {days} hari"
 
 def format_profile_for_ai(user: models.User, profile: models.Profile, educations, experiences, certifications):
+    # 1. PENDIDIKAN
     last_edu = educations[0] if educations else None
-    edu_str = f"Jenjang Pendidikan: {last_edu.level if last_edu else '-'}\nJurusan: {last_edu.major if last_edu else '-'}"
     
+    jenjang = last_edu.level if (last_edu and last_edu.level) else "-"
+    jurusan = last_edu.major if (last_edu and last_edu.major) else "-"
+    
+    # Judul Tugas Akhir
+    if last_edu and last_edu.final_project_title and last_edu.final_project_title.strip() not in ["-", ""]:
+        judul_ta = last_edu.final_project_title
+    else:
+        judul_ta = "Tidak ada tugas akhir"
+
+    # 2. SERTIFIKASI & PELATIHAN (DATA SAMA)
+    # Karena pelatihan = sertifikasi, kita ambil dari sumber yang sama (certifications)
+    if certifications:
+        # Ambil Nama
+        cert_names = [c.name for c in certifications if c.name]
+        nama_isi = ", ".join(cert_names) if cert_names else ""
+        
+        # Ambil Bidang (Pastikan menggunakan nama kolom terbaru: bidang_keahlian)
+        # Kita gunakan getattr agar aman jika kolom belum ada di objek session
+        cert_fields = [getattr(c, "bidang_keahlian", "") for c in certifications if getattr(c, "bidang_keahlian", None)]
+        bidang_isi = ", ".join(cert_fields) if cert_fields else ""
+        
+        # Assign ke variabel Sertifikasi
+        sertifikasi_str = nama_isi if nama_isi else "Belum memiliki sertifikasi"
+        bidang_sertifikasi_str = bidang_isi if bidang_isi else "Tidak ada sertifikasi"
+        
+        # Assign ke variabel Pelatihan (Isinya SAMA dengan sertifikasi)
+        nama_pelatihan = nama_isi if nama_isi else "Tidak ada pelatihan"
+        bidang_pelatihan = bidang_isi if bidang_isi else "Tidak ada pelatihan"
+    else:
+        # Default value jika kosong
+        sertifikasi_str = "Belum memiliki sertifikasi"
+        bidang_sertifikasi_str = "Tidak ada sertifikasi"
+        nama_pelatihan = "Tidak ada pelatihan"
+        bidang_pelatihan = "Tidak ada pelatihan"
+
+    # 3. PENGALAMAN KERJA
     last_exp = experiences[0] if experiences else None
-    exp_str = f"Posisi Pekerjaan: {last_exp.job_title if last_exp else '-'}\nDeskripsi Tugas: {last_exp.description if last_exp else '-'}\nLama Bekerja: {calculate_duration(last_exp.start_date, last_exp.end_date) if last_exp else '-'}"
     
+    if last_exp:
+        posisi_pekerjaan = last_exp.position if last_exp.position else "Belum memiliki pengalaman kerja"
+        deskripsi_tugas = last_exp.description if last_exp.description else "Belum memiliki pengalaman kerja"
+        lama_bekerja = calculate_duration(last_exp.start_date, last_exp.end_date)
+    else:
+        posisi_pekerjaan = "Belum memiliki pengalaman kerja"
+        deskripsi_tugas = "Belum memiliki pengalaman kerja"
+        lama_bekerja = "0 tahun 0 bulan 0 hari"
+
+    # 4. KETERAMPILAN
     skills_str = ", ".join(profile.skills) if profile.skills else "-"
-    cert_str = ", ".join([c.name for c in certifications]) if certifications else "-"
- 
-    # Prompt Awal: Data User
+
+    # FORMAT STRING FINAL
     prompt_text = (
         f"Berikut data singkat saya:\n"
-        f"{edu_str}\n"
-        f"Bidang Pelatihan: -\n"
-        f"Sertifikasi: {cert_str}\n"
-        f"{exp_str}\n"
-        f"Keterampilan: {skills_str}\n\n"
-        f"[INSTRUKSI AWAL]: Sebagai Interviewer, tugasmu adalah memvalidasi data di atas. "
-        f"Jangan berikan rangkuman. Langsung ajukan 1 pertanyaan pembuka untuk memverifikasi salah satu poin data."
+        f"Jenjang Pendidikan: {jenjang}\n"
+        f"Jurusan: {jurusan}\n"
+        f"Judul Tugas Akhir: {judul_ta}\n"
+        f"Bidang Pelatihan: {bidang_pelatihan}\n"
+        f"Nama Pelatihan: {nama_pelatihan}\n"
+        f"Sertifikasi: {sertifikasi_str}\n"
+        f"Bidang Sertifikasi: {bidang_sertifikasi_str}\n"
+        f"Posisi Pekerjaan: {posisi_pekerjaan}\n"
+        f"Deskripsi Tugas dan Tanggung Jawab: {deskripsi_tugas}\n"
+        f"Lama Bekerja: {lama_bekerja}\n"
+        f"Keterampilan: {skills_str}\n"
     )
+    
     return prompt_text
 
 
@@ -59,31 +114,21 @@ async def start_interview_session(
     db.query(models.InterviewLog).filter(models.InterviewLog.user_id == current_user.id).delete()
     db.commit()
 
-    # 2. Start Interview (Logic Hybrid Tim 3 / Tim 5)
-    # Service akan handle start session (untuk Tim 5) atau return prompt awal (untuk Tim 3)
-    result_dict = await ai_service.start_interview(user_data_prompt)
+    # 2. Kirim Data Awal ke AI
+    ai_result = await ai_service.get_interview_reply(
+        prompt=user_data_prompt,      
+        history=[] 
+    )
     
-    ai_response_text = result_dict["answer"]
-    session_id = result_dict.get("session_id") # Bisa None kalau pakai Tim 3
-
-    # Simpan Session ID (Jika pakai Tim 5)
-    if session_id:
-        profile.ai_session_id = session_id
-        db.add(profile)
-        
     new_log = models.InterviewLog(
         user_id=current_user.id,
         user_prompt=user_data_prompt,
-        ai_response=ai_response_text
+        ai_response=ai_result.data.answer
     )
     db.add(new_log)
     db.commit()
 
-    return ai_schema.InterviewResponse(
-        success=True,
-        message="Session started",
-        data={"answer": ai_response_text}
-    )
+    return ai_result
 
 
 @router.post("/interview", response_model=ai_schema.InterviewResponse)
@@ -92,53 +137,30 @@ async def chat_interview(
     current_user: models.User = Depends(deps.get_current_user),
     db: Session = Depends(get_db)
 ):
-    # 1. Ambil Profile untuk cek Session ID (Support Tim 5)
-    profile = db.query(models.Profile).filter(models.Profile.user_id == current_user.id).first()
-    session_id = profile.ai_session_id if profile else None
-
-    # 2. Ambil History Chat (Support Tim 3)
+    # 1. Ambil History Chat Sebelumnya
     past_logs = db.query(models.InterviewLog).filter(
         models.InterviewLog.user_id == current_user.id
     ).order_by(models.InterviewLog.created_at.asc()).all()
     
-    # 3. Susun History & System Prompt
+    # 2. Susun History Murni
     history_payload = []
-    
-    # System Prompt: Instruksi Utama agar AI tahu kapan harus berhenti
-    history_payload.append({
-        "role": "system",
-        "content": (
-            "Anda adalah interviewer profesional dari platform talenta digital Diploy. "
-            "Tugas Anda: Menggali kompetensi user secara mendalam namun efisien. "
-            "ATURAN PENTING: "
-            "1. Ajukan pertanyaan satu per satu. "
-            "2. Jika Anda menilai informasi sudah CUKUP untuk menentukan Area Fungsi dan Level (1-5), "
-            "   SEGERA akhiri sesi dengan ucapan terima kasih dan output format wajib: "
-            "   [END OF CHAT] <RESULT>{\"area_fungsi\":\"Nama Area\", \"level\":Angka}</RESULT>. "
-            "3. Jangan bertele-tele."
-        )
-    }) 
-
     for log in past_logs:
         history_payload.append({"role": "user", "content": log.user_prompt})
         history_payload.append({"role": "assistant", "content": log.ai_response})
      
-    # 4. Tambahkan Instruksi 'Hidden' di setiap prompt user agar AI tetap fokus
-    # Kita tidak lagi membatasi jumlah chat, tapi mengingatkan AI untuk cek kecukupan data.
+    # 3. Prompt Injection (Breadth First Strategy)
     prompt_for_ai = (
         f"{request.prompt}\n\n"
-        "(Instruksi Sistem: Respon jawaban user, lalu ajukan pertanyaan selanjutnya. "
-        "Namun, jika data dirasa sudah cukup valid untuk penilaian, silakan akhiri dengan tag <RESULT>.)"
+        "(Instruksi Sistem: Terima kasih atas jawabannya. Sekarang, silakan LIHAT KEMBALI data profil awal kandidat. "
+        "Ajukan satu pertanyaan baru untuk memvalidasi aspek profil LAINNYA yang BELUM ditanyakan (misalnya: jika tadi Pendidikan, sekarang tanya Sertifikasi, Pengalaman, atau Skill). "
+        "Pastikan pertanyaan relevan dengan informasi yang tertulis di profil kandidat. "
+        "Jangan menggali topik yang sama terlalu dalam jika informasi dasar sudah didapat.)"
     )
 
-    # 5. Kirim ke AI Service
-    ai_result = await ai_service.get_interview_reply(
-        prompt=prompt_for_ai, 
-        history=history_payload,
-        session_id=session_id
-    )
+    # 4. Kirim ke AI
+    ai_result = await ai_service.get_interview_reply(prompt_for_ai, history_payload)
     
-    # 6. Simpan Chat BARU ke Database (Simpan prompt asli user)
+    # 5. Simpan Chat BARU ke Database
     new_log = models.InterviewLog(
         user_id=current_user.id,
         user_prompt=request.prompt, 
@@ -158,7 +180,18 @@ def get_chat_history(
         models.InterviewLog.user_id == current_user.id
     ).order_by(models.InterviewLog.created_at.asc()).all()
     
-    return logs
+    # FILTER: Hapus log pertama jika itu adalah prompt profil otomatis
+    cleaned_logs = []
+    for log in logs:
+        # Cek apakah ini prompt data profil
+        if log.user_prompt.startswith("Berikut data singkat saya"):
+            # Kosongkan user_prompt agar Frontend menyembunyikannya
+            log.user_prompt = "" 
+            cleaned_logs.append(log)
+        else:
+            cleaned_logs.append(log)
+            
+    return cleaned_logs
 
 # 2. Talent Mapping (Tetap Sama)
 @router.post("/mapping", response_model=ai_schema.MappingResponse)

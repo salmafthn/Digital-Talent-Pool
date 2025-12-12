@@ -120,7 +120,7 @@ async def add_certification(
     organizer: str = Form(..., min_length=3),
     year: int = Form(...),
     description: str = Form(..., min_length=5),
-    functional_area: str = Form(...),
+    bidang_keahlian: str = Form(...),
     file: UploadFile = File(...),
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -172,7 +172,7 @@ async def add_certification(
         organizer=organizer,
         year=year,
         description=description,
-        functional_area=functional_area,
+        bidang_keahlian=bidang_keahlian,
         proof_url=file_url
     )
 
