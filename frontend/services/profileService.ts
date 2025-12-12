@@ -1,35 +1,87 @@
 // frontend/services/profileService.ts
 import api from "@/lib/api"
 
-// ---- Tipe opsional (biar lebih rapi) ----
+// ====== TYPES sesuai BE ======
+
+export type EducationLevel =
+  | "SMA/SMK"
+  | "D3"
+  | "D4"
+  | "S1"
+  | "S2"
+  | "S3"
+  | "Lainnya"
+
+export interface EducationCreatePayload {
+  level: EducationLevel
+  institution_name?: string | null
+  faculty?: string | null
+  major?: string | null
+  enrollment_year?: number | null
+  graduation_year?: number | null
+  is_current?: boolean
+  gpa?: string | null
+  final_project_title?: string | null
+}
+
+
+export interface EducationResponse extends EducationCreatePayload {
+  id: number
+}
+
 export interface ProfileUpdatePayload {
-  avatar_url?: string;
-  nik?: string
-  full_name?: string
-  gender?: string
-  birth_date?: string
-  email?: string
-  phone?: string;
-  linkedin_url?: string;
-  instagram_username?: string;
-  portfolio_url?: string;
-  address?: string
-  bio?: string;
-  skills?: string[]
+  phone?: string | null
+  linkedin_url?: string | null
+  portfolio_url?: string | null
+  instagram_username?: string | null
+  address?: string | null
+  bio?: string | null
+  avatar_url?: string | null
+  skills?: string[] | null
 }
 
-// Nanti tipe-tipe lain bisa kamu rapikan lagi kalau mau
-export const getMyProfile = async () => {
+export interface ProfileFullResponse {
+  id: number
+  user_id: number
+
+  email?: string | null
+  nik?: string | null
+  full_name?: string | null
+  gender?: string | null
+  birth_date?: string | null
+
+  phone?: string | null
+  address?: string | null
+  bio?: string | null
+  linkedin_url?: string | null
+  portfolio_url?: string | null
+  instagram_username?: string | null
+
+  avatar_url?: string | null
+  skills: string[]
+
+  educations: EducationResponse[]
+  certifications: any[]
+  experiences: any[]
+}
+
+// ====== API calls ======
+
+export const getMyProfile = async (): Promise<ProfileFullResponse> => {
   const res = await api.get("/profile/")
-  return res.data // ProfileFullResponse dari backend
+  return res.data
 }
 
-export const updateMyProfile = async (data: ProfileUpdatePayload) => {
+export const updateMyProfile = async (
+  data: ProfileUpdatePayload,
+): Promise<ProfileFullResponse> => {
   const res = await api.put("/profile/", data)
   return res.data
 }
 
-export const addEducation = async (data: any) => {
+export const addEducation = async (
+  data: EducationCreatePayload,
+): Promise<EducationResponse> => {
   const res = await api.post("/profile/education", data)
   return res.data
 }
@@ -64,9 +116,7 @@ export const addCertification = async (payload: {
   formData.append("file", payload.file)
 
   const res = await api.post("/profile/certification", formData, {
-    headers: {
-      "Content-Type": "multipart/form-data",
-    },
+    headers: { "Content-Type": "multipart/form-data" },
   })
 
   return res.data
@@ -82,9 +132,7 @@ export const uploadAvatar = async (file: File) => {
   formData.append("file", file)
 
   const res = await api.post("/profile/avatar", formData, {
-    headers: {
-      "Content-Type": "multipart/form-data",
-    },
+    headers: { "Content-Type": "multipart/form-data" },
   })
 
   return res.data

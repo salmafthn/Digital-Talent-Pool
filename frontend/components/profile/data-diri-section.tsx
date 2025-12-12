@@ -149,11 +149,6 @@ export function DataDiriSection({ locked, onLock, onNext, initialData }: Props) 
 
       // ⚠️ SESUAIKAN field ini dengan schema ProfileUpdate di backend
       await updateMyProfile({
-        nik: form.nik,
-        full_name: form.nama,
-        gender: form.gender, // nanti kalau backend pakai enum "MALE"/"FEMALE" tinggal mapping di sini
-        birth_date: form.tanggalLahir,
-        email: form.email,
         phone: form.wa,
         linkedin_url: form.linkedin,
         instagram_username: form.instagram,
@@ -162,6 +157,7 @@ export function DataDiriSection({ locked, onLock, onNext, initialData }: Props) 
         bio: form.tentang,
         skills: form.keterampilan,
       })
+
 
       toast({
         title: "Profil tersimpan",
@@ -277,13 +273,19 @@ export function DataDiriSection({ locked, onLock, onNext, initialData }: Props) 
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
-          <label className="text-sm font-medium">Email</label>
+          <label className="text-sm font-medium">Email</label><span className="text-red-500">*</span>
           <Input
             type="email"
             value={form.email}
-            onChange={(e) => handleChange("email", e.target.value)}
+            // Hapus onChange atau biarkan (tidak akan ngefek karena disabled)
+            disabled // <-- INI YANG BIKIN TIDAK BISA DIEDIT
+            className="bg-slate-100 cursor-not-allowed"
             placeholder="Email aktif"
           />
+          {/* Opsional: Tambahkan keterangan kecil di bawahnya */}
+          <p className="mt-1 text-xs text-slate-500">
+            Email terdaftar tidak dapat diubah.
+          </p>
         </div>
         <div>
           <label className="text-sm font-medium">No. WhatsApp</label>
