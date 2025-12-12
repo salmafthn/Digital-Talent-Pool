@@ -20,6 +20,7 @@ def calculate_duration(start_date: date, end_date: date = None):
     years = delta.days // 365
     months = (delta.days % 365) // 30
     return f"{years} tahun {months} bulan"
+
 def format_profile_for_ai(user: models.User, profile: models.Profile, educations, experiences, certifications):
     # Ambil data pendidikan terakhir
     last_edu = educations[0] if educations else None
@@ -34,15 +35,17 @@ def format_profile_for_ai(user: models.User, profile: models.Profile, educations
     
     # Gabungkan Sertifikasi
     cert_str = ", ".join([c.name for c in certifications]) if certifications else "-"
-
-    # RANGKAI SESUAI FORMAT TIM 2
+ 
     prompt_text = (
         f"Berikut data singkat saya:\n"
         f"{edu_str}\n"
-        f"Bidang Pelatihan: -\n" # Kalau ada data pelatihan di DB, masukkan sini
+        f"Bidang Pelatihan: -\n"
         f"Sertifikasi: {cert_str}\n"
         f"{exp_str}\n"
-        f"Keterampilan: {skills_str}"
+        f"Keterampilan: {skills_str}\n\n"
+        f"Berdasarkan data di atas, tolong langsung bertindak sebagai interviewer. "
+        f"Jangan berikan rangkuman atau saran dulu. "
+        f"Langsung ajukan pertanyaan pertama Anda untuk menggali kompetensi saya."
     )
     return prompt_text
 
@@ -98,7 +101,6 @@ async def chat_interview(
     # 2. Susun History untuk dikirim ke AI
     history_payload = []
     
-    # PENTING: Selipkan System Prompt lagi di awal biar AI gak lupa ingatan
     history_payload.append({
         "role": "system",
         "content": "Anda adalah interviewer dari platform talenta digital Diploy khusus Area Fungsi. Tugas Anda adalah menggali detail kompetensi talenta berdasarkan data awal yang diberikan, meluruskan jawaban yang kurang relevan, dan memastikan informasi yang terkumpul cukup tajam untuk pemetaan Area Fungsi dan Level Okupasi. Gunakan bahasa Indonesia yang baik dan benar, tetap profesional, dan jangan menggunakan bahasa gaul atau singkatan informal."
