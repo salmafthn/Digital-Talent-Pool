@@ -11,19 +11,19 @@ export const metadata: Metadata = {
   icons: {
     icon: [
       {
-        url: '/logoDTS.png',
+        url: '/DTS-logo.png',
         media: '(prefers-color-scheme: light)',
       },
       {
-        url: '/logoDTS.png',
+        url: '/DTS-logo.png',
         media: '(prefers-color-scheme: dark)',
       },
       {
-        url: '/logoDTS.png',
+        url: '/DTS-logo.png',
         type: 'image/png',
       },
     ],
-    apple: '/logoDTS.png',
+    apple: '/DTS-logo.png',
   },
 }
 
