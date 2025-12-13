@@ -5,7 +5,7 @@ from app.services.ai_service import AIService
 from app.schemas import ai_schema
 from app.api import deps
 from app import models
-from datetime import date
+from datetime import date, datetime
 from typing import List
 import re  # <--- Tambahan penting untuk Regex
 
@@ -224,6 +224,7 @@ async def talent_mapping(
         ])
 
     result = await ai_service.analyze_talent_mapping(full_text)
+    
     return result
  
 @router.post("/questions", response_model=ai_schema.QuestionResponse)
@@ -232,3 +233,95 @@ async def generate_questions(
     current_user: models.User = Depends(deps.get_current_user)
 ):
     return await ai_service.generate_questions(request.area_fungsi, request.level_kompetensi)
+
+@router.post("/assessment/submit", response_model=ai_schema.AssessmentResultResponse)
+def submit_assessment(
+    payload: ai_schema.AssessmentSubmitRequest,
+    current_user: models.User = Depends(deps.get_current_user),
+    db: Session = Depends(get_db)
+):
+    # 1. Cari Profile User
+    profile = db.query(models.Profile).filter(models.Profile.user_id == current_user.id).first()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+
+    # 2. HITUNG SKOR & STATUS TERLEBIH DAHULU (In-Memory)
+    total_correct = 0
+    total_soal = len(payload.jawaban)
+    processed_answers = [] # Tampung jawaban untuk disimpan nanti
+
+    for ans in payload.jawaban:
+        kunci_huruf = ans.kunci_jawaban.lower() # misal "a"
+        # Ambil teks opsi yang benar (misal teks dari opsi A)
+        teks_kunci = ans.opsi_jawaban.get(kunci_huruf, "").strip()
+        # Ambil jawaban user
+        teks_user = ans.jawaban_user.strip()
+
+        # Logika Penilaian (Case Insensitive & Strip)
+        is_correct = (teks_user.lower() == teks_kunci.lower())
+        
+        if is_correct:
+            total_correct += 1
+            
+        # Simpan data untuk insert DB nanti
+        processed_answers.append({
+            "question_no": ans.nomor_soal,
+            "question_text": ans.soal,
+            "options": ans.opsi_jawaban,
+            "chosen_option": teks_user,
+            "correct_option": teks_kunci,
+            "is_correct": is_correct
+        })
+    
+    # Rumus Skor
+    final_score = (total_correct / total_soal) * 100 if total_soal > 0 else 0
+    
+    # TENTUKAN STATUS (Lulus/Gagal)
+    # Unassessed adalah kondisi default jika tidak ada data, jadi tidak perlu logic khusus di sini.
+    status_assessment = "lulus" if final_score >= 80 else "gagal"
+
+    # 3. BARU SIMPAN KE DB (Assessment Attempt)
+    new_attempt = models.AssessmentAttempt(
+        profile_id=profile.id,
+        status=status_assessment, # Simpan status yang sudah dihitung
+        submitted_at=datetime.now()
+    )
+    db.add(new_attempt)
+    db.commit()
+    db.refresh(new_attempt)
+
+    # 4. Simpan Detail Jawaban (AssessmentAnswer)
+    for p_ans in processed_answers:
+        db_ans = models.AssessmentAnswer(
+            attempt_id=new_attempt.id,
+            question_no=p_ans["question_no"],
+            question_text=p_ans["question_text"],
+            options=p_ans["options"],
+            chosen_option=p_ans["chosen_option"],
+            correct_option=p_ans["correct_option"],
+            is_correct=p_ans["is_correct"]
+        )
+        db.add(db_ans)
+    
+    # 5. Simpan Hasil Akhir (AssessmentResult)
+    new_result = models.AssessmentResult(
+        attempt_id=new_attempt.id,
+        profile_id=profile.id,
+        score=final_score,
+        threshold=80.0, # Threshold lulus
+        raw_data={
+            "area": payload.area_fungsi, 
+            "correct": total_correct, 
+            "total": total_soal,
+            "status": status_assessment
+        }
+    )
+    db.add(new_result)
+    db.commit()
+
+    return {
+        "success": True, 
+        "score": final_score, 
+        "status": status_assessment,
+        "message": f"Assessment selesai. Status: {status_assessment.upper()} (Skor: {final_score:.2f})"
+    }

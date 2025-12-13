@@ -18,6 +18,7 @@ interface BackendQuestion {
     c: string;
     d: string;
   };
+  jawaban_benar: string;
 }
 
 // Definisi Tipe Data untuk Frontend (Format Lama)
@@ -25,6 +26,8 @@ interface FrontendQuestion {
   id: number;
   question: string;
   options: string[];
+  raw_options: { a: string; b: string; c: string; d: string };
+  correct_key: string;
 }
 
 export default function AssessmentPage() {
@@ -92,6 +95,8 @@ export default function AssessmentPage() {
                 q.opsi_jawaban.c,
                 q.opsi_jawaban.d,
               ],
+              raw_options: q.opsi_jawaban, // Simpan object aslinya
+              correct_key: q.jawaban_benar, // Simpan kunci jawaban ("a", "b", dst)
             })
           );
           setQuestions(mappedQuestions);
@@ -131,15 +136,52 @@ export default function AssessmentPage() {
       setCurrentQuestion(currentQuestion + 1);
   };
 
-  const handleSubmit = () => {
-    setIsSubmitting(true);
-    // TODO: Kirim jawaban ke Backend di sini (POST /ai/assessment/submit)
-    // Untuk sekarang kita simpan state lokal saja
+const handleSubmit = async () => {
+  setIsSubmitting(true);
+  const token = localStorage.getItem("token");
+
+  try {
+    // Susun Payload sesuai Schema Backend
+    const payload = {
+      area_fungsi: activeArea,
+      jawaban: questions.map((q) => ({
+        nomor_soal: q.id,
+        soal: q.question,
+        opsi_jawaban: q.raw_options,
+        jawaban_user: answers[q.id] || "",
+        kunci_jawaban: q.correct_key,
+      })),
+    };
+
+    const response = await fetch("http://localhost:8001/ai/assessment/submit", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      throw new Error("Gagal mengirim jawaban.");
+    }
+
+    // const result = await response.json(); // Data hasil tetap diterima tapi tidak dipakai untuk alert
+
+    // HANYA TAMPILKAN PESAN SUKSES (Tanpa Skor)
+    alert(
+      "Assessment Selesai! Terima kasih telah mengerjakan. Silakan cek status kelulusan di Dashboard."
+    );
+
     completeAssessment(activeArea);
-    setTimeout(() => {
-      router.push("/dashboard");
-    }, 500);
-  };
+    router.push("/dashboard");
+  } catch (err) {
+    console.error(err);
+    alert("Gagal menyimpan jawaban. Silakan coba lagi.");
+  } finally {
+    setIsSubmitting(false);
+  }
+};
 
   // --- RENDER LOADING STATE ---
   if (loading) {

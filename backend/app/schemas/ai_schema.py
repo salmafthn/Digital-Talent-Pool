@@ -20,6 +20,7 @@ class MappingRequest(BaseModel):
 class CompetencyLevel(BaseModel):
     level_kompetensi: int
     kecocokan: float
+    status: str = "unassessed"
 
 class MappingData(BaseModel):
     Tata_Kelola_TI: Optional[CompetencyLevel] = None
@@ -73,3 +74,21 @@ class ChatLogResponse(BaseModel):
 
     class Config:
         from_attributes = True
+        
+        
+# --- D. SCHEMA ASSESSMENT SUBMIT (BARU) ---
+class AssessmentAnswerItem(BaseModel):
+    nomor_soal: int
+    soal: str
+    opsi_jawaban: Dict[str, str] # { "a": "...", "b": "..." }
+    jawaban_user: str # Jawaban yang dipilih user (misal: "Big Data adalah...")
+    kunci_jawaban: str # Kunci dari AI (misal: "a")
+
+class AssessmentSubmitRequest(BaseModel):
+    area_fungsi: str
+    jawaban: List[AssessmentAnswerItem]
+
+class AssessmentResultResponse(BaseModel):
+    success: bool
+    score: float
+    message: str

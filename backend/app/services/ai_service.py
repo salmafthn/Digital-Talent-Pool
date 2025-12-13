@@ -13,16 +13,25 @@ class AIService:
     
     async def _post_request(self, endpoint: str, payload: dict):
         url = f"{self.base_url}{endpoint}"
+        print(f"🚀 Nembak ke: {url} | Payload: {payload}") # Debugging (Opsional)
+
         try:
+            # UBAH TIMEOUT DI SINI DARI 60.0 JADI 300.0 (5 Menit)
             async with httpx.AsyncClient() as client:
-                response = await client.post(url, json=payload, timeout=60.0)
+                response = await client.post(url, json=payload, timeout=300.0) 
+                
+                # Cek respon error dari Tim 3
+                if response.status_code >= 400:
+                     print(f"❌ Error dari AI: {response.text}")
+                
                 response.raise_for_status()
                 return response.json()
+                
         except httpx.HTTPStatusError as e:
-            # Tampilkan detail error dari Tim 3 biar gampang debug
             raise HTTPException(status_code=e.response.status_code, detail=f"AI Error: {e.response.text}")
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Gagal menghubungi AI Service: {str(e)}")
+            print(f"❌ Exception Fatal: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Gagal menghubungi AI Service (Timeout/Koneksi): {str(e)}")
 
     # A. INTERVIEW (Update Format Payload)
     async def get_interview_reply(self, prompt: str, history: list = []) -> ai_schema.InterviewResponse:
