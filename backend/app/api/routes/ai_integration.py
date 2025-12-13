@@ -7,6 +7,7 @@ from app.api import deps
 from app import models
 from datetime import date
 from typing import List
+import re  # <--- Tambahan penting untuk Regex
 
 router = APIRouter(prefix="/ai", tags=["AI Integration"])
 ai_service = AIService()
@@ -38,27 +39,20 @@ def format_profile_for_ai(user: models.User, profile: models.Profile, educations
     else:
         judul_ta = "Tidak ada tugas akhir"
 
-    # 2. SERTIFIKASI & PELATIHAN (DATA SAMA)
-    # Karena pelatihan = sertifikasi, kita ambil dari sumber yang sama (certifications)
+    # 2. SERTIFIKASI & PELATIHAN
     if certifications:
-        # Ambil Nama
         cert_names = [c.name for c in certifications if c.name]
         nama_isi = ", ".join(cert_names) if cert_names else ""
         
-        # Ambil Bidang (Pastikan menggunakan nama kolom terbaru: bidang_keahlian)
-        # Kita gunakan getattr agar aman jika kolom belum ada di objek session
         cert_fields = [getattr(c, "bidang_keahlian", "") for c in certifications if getattr(c, "bidang_keahlian", None)]
         bidang_isi = ", ".join(cert_fields) if cert_fields else ""
         
-        # Assign ke variabel Sertifikasi
         sertifikasi_str = nama_isi if nama_isi else "Belum memiliki sertifikasi"
         bidang_sertifikasi_str = bidang_isi if bidang_isi else "Tidak ada sertifikasi"
         
-        # Assign ke variabel Pelatihan (Isinya SAMA dengan sertifikasi)
         nama_pelatihan = nama_isi if nama_isi else "Tidak ada pelatihan"
         bidang_pelatihan = bidang_isi if bidang_isi else "Tidak ada pelatihan"
     else:
-        # Default value jika kosong
         sertifikasi_str = "Belum memiliki sertifikasi"
         bidang_sertifikasi_str = "Tidak ada sertifikasi"
         nama_pelatihan = "Tidak ada pelatihan"
@@ -97,6 +91,14 @@ def format_profile_for_ai(user: models.User, profile: models.Profile, educations
     
     return prompt_text
 
+# Fungsi Helper untuk membersihkan tag <think>
+def clean_think_tag(text: str) -> str:
+    if not text:
+        return ""
+    # Regex untuk menghapus <think>...</think> termasuk newlines (DOTALL)
+    cleaned = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
+    return cleaned.strip()
+
 
 @router.post("/interview/start", response_model=ai_schema.InterviewResponse)
 async def start_interview_session(
@@ -120,10 +122,15 @@ async def start_interview_session(
         history=[] 
     )
     
+    # --- BERSIHKAN RESPONSE SEBELUM DISIMPAN/DIKEMBALIKAN ---
+    clean_response = clean_think_tag(ai_result.data.answer)
+    ai_result.data.answer = clean_response
+    # --------------------------------------------------------
+    
     new_log = models.InterviewLog(
         user_id=current_user.id,
         user_prompt=user_data_prompt,
-        ai_response=ai_result.data.answer
+        ai_response=clean_response # Simpan yang sudah bersih
     )
     db.add(new_log)
     db.commit()
@@ -160,11 +167,16 @@ async def chat_interview(
     # 4. Kirim ke AI
     ai_result = await ai_service.get_interview_reply(prompt_for_ai, history_payload)
     
+    # --- BERSIHKAN RESPONSE SEBELUM DISIMPAN/DIKEMBALIKAN ---
+    clean_response = clean_think_tag(ai_result.data.answer)
+    ai_result.data.answer = clean_response
+    # --------------------------------------------------------
+    
     # 5. Simpan Chat BARU ke Database
     new_log = models.InterviewLog(
         user_id=current_user.id,
         user_prompt=request.prompt, 
-        ai_response=ai_result.data.answer
+        ai_response=clean_response # Simpan yang sudah bersih
     )
     db.add(new_log)
     db.commit()
@@ -183,7 +195,6 @@ def get_chat_history(
     # FILTER: Hapus log pertama jika itu adalah prompt profil otomatis
     cleaned_logs = []
     for log in logs:
-        # Cek apakah ini prompt data profil
         if log.user_prompt.startswith("Berikut data singkat saya"):
             # Kosongkan user_prompt agar Frontend menyembunyikannya
             log.user_prompt = "" 
@@ -206,8 +217,9 @@ async def talent_mapping(
     if not logs:
         full_text = "User belum melakukan interview."
     else:
+        # Bersihkan juga di sini untuk jaga-jaga
         full_text = " ".join([
-            f"User berkata: {log.user_prompt}. AI menjawab: {log.ai_response}." 
+            f"User berkata: {log.user_prompt}. AI menjawab: {clean_think_tag(log.ai_response)}." 
             for log in logs
         ])
 
