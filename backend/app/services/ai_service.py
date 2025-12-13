@@ -13,20 +13,32 @@ class AIService:
     
     async def _post_request(self, endpoint: str, payload: dict):
         url = f"{self.base_url}{endpoint}"
-        print(f"🚀 Nembak ke: {url} | Payload: {payload}") # Debugging (Opsional)
+        print(f"🚀 Nembak ke: {url} | Payload: {payload}") 
 
         try:
-            # UBAH TIMEOUT DI SINI DARI 60.0 JADI 300.0 (5 Menit)
-            async with httpx.AsyncClient() as client:
-                response = await client.post(url, json=payload, timeout=300.0) 
+            # UPDATE: Konfigurasi Timeout Lengkap (Connect, Read, Write, Pool)
+            # Total 5 menit (300 detik) untuk menunggu AI mikir
+            timeout_config = httpx.Timeout(300.0, connect=60.0)
+
+            # UPDATE: Disable Keep-Alive dengan header "Connection": "close"
+            # Ini mencegah error "Server disconnected" jika server AI menutup paksa soket
+            async with httpx.AsyncClient(timeout=timeout_config) as client:
+                response = await client.post(
+                    url, 
+                    json=payload,
+                    headers={"Connection": "close"} # <--- PENTING: Paksa tutup koneksi setelah selesai
+                ) 
                 
-                # Cek respon error dari Tim 3
                 if response.status_code >= 400:
                      print(f"❌ Error dari AI: {response.text}")
                 
                 response.raise_for_status()
                 return response.json()
                 
+        except httpx.RemoteProtocolError:
+            # Ini error spesifik "Server disconnected without sending a response"
+            print("❌ AI Service putus koneksi mendadak.")
+            raise HTTPException(status_code=502, detail="AI Service terputus di tengah jalan. Kemungkinan server AI restart/crash.")
         except httpx.HTTPStatusError as e:
             raise HTTPException(status_code=e.response.status_code, detail=f"AI Error: {e.response.text}")
         except Exception as e:

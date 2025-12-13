@@ -1,207 +1,400 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import Navbar from "@/components/navbar";
-import Footer from "@/components/footer";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import { getChatHistory } from "@/services/aiService";
 
-// Update Interface: Tambah Status
-interface CompetencyLevel {
-  level_kompetensi: number;
-  kecocokan: number;
-  status: string; // <--- Baru (lulus / gagal / unassessed)
+type AreaKey = "DSC" | "TKTI" | "PPD" | "CYBER" | "TI" | "LTI" | "NON_TIK";
+// Update Type Status
+type AssessStatus = "Lulus" | "Gagal" | "Unassessed";
+
+type DashboardArea = {
+  key: AreaKey;
+  title: string;
+  level?: number;
+  status?: AssessStatus;
+  recommendations?: string[];
+  rawArea?: string;
+};
+
+// 🔧 Konten rekomendasi per area (TETAP SAMA)
+const RECOMMENDATIONS: Record<
+  Exclude<AreaKey, "NON_TIK">,
+  { title: string; recommendations: string[] }
+> = {
+  DSC: {
+    title: "Data Science & Cloud",
+    recommendations: [
+      "Dasar Data Science",
+      "Python untuk Analisis Data",
+      "Machine Learning Dasar",
+      "Machine Learning Lanjutan",
+      "Data Visualization",
+      "Deployment Model",
+    ],
+  },
+  TKTI: {
+    title: "IT Governance",
+    recommendations: [
+      "Dasar IT Governance",
+      "COBIT / ITIL Overview",
+      "Risk & Compliance",
+      "Policy & Audit Dasar",
+      "Service Strategy & KPI",
+    ],
+  },
+  PPD: {
+    title: "Digital Product Development",
+    recommendations: [
+      "Product Discovery",
+      "User Research Dasar",
+      "PRD & Requirement",
+      "Agile/Scrum",
+      "Roadmap & Prioritization",
+    ],
+  },
+  CYBER: {
+    title: "Cybersecurity",
+    recommendations: [
+      "Fundamental Security",
+      "Network Security Dasar",
+      "OWASP Top 10",
+      "Incident Response",
+      "Security Awareness",
+    ],
+  },
+  TI: {
+    title: "Teknologi & Infrastruktur",
+    recommendations: [
+      "Dasar Infrastruktur",
+      "Linux Fundamental",
+      "Networking Dasar",
+      "Cloud Fundamental",
+      "Monitoring & Logging",
+    ],
+  },
+  LTI: {
+    title: "Layanan Teknologi Informasi",
+    recommendations: [
+      "IT Service Management Dasar",
+      "Incident vs Request",
+      "SLA & Prioritization",
+      "Change Management Dasar",
+      "Komunikasi dengan User",
+    ],
+  },
+};
+
+function normalize(s: string) {
+  return s.toLowerCase().replace(/\s+/g, " ").replace(/[–—-]/g, "-").trim();
 }
 
-interface MappingResponse {
-  success: boolean;
-  message: string;
-  data: Record<string, CompetencyLevel | null>;
+function mapAreaToKey(areaFungsi: string): AreaKey {
+  const a = normalize(areaFungsi);
+  if (a.includes("non tik") || a.includes("non-tik")) return "NON_TIK";
+  const alias: Array<[string, AreaKey]> = [
+    ["data science", "DSC"],
+    ["sains data", "DSC"],
+    ["kecerdasan artifisial", "DSC"],
+    ["ai", "DSC"],
+    ["cloud", "DSC"],
+    ["tata kelola", "TKTI"],
+    ["it governance", "TKTI"],
+    ["governance", "TKTI"],
+    ["pengembangan produk digital", "PPD"],
+    ["digital product", "PPD"],
+    ["product development", "PPD"],
+    ["keamanan informasi", "CYBER"],
+    ["siber", "CYBER"],
+    ["cyber", "CYBER"],
+    ["cybersecurity", "CYBER"],
+    ["teknologi dan infrastruktur", "TI"],
+    ["infrastruktur", "TI"],
+    ["infrastructure", "TI"],
+    ["layanan teknologi informasi", "LTI"],
+    ["layanan ti", "LTI"],
+    ["it service", "LTI"],
+    ["it services", "LTI"],
+  ];
+  for (const [needle, key] of alias) {
+    if (a.includes(needle)) return key;
+  }
+  return "NON_TIK";
+}
+
+function extractResultTag(text: string): string | null {
+  if (!text) return null;
+  const matches = Array.from(text.matchAll(/<RESULT>([\s\S]*?)<\/RESULT>/g));
+  if (matches.length === 0) return null;
+  return matches[matches.length - 1][1]?.trim() ?? null;
+}
+
+function safeJsonParse(raw: string): any | null {
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {}
+  const unescaped = raw.replace(/\\"/g, '"').replace(/\\\\/g, "\\");
+  try {
+    return JSON.parse(unescaped);
+  } catch {}
+  return null;
 }
 
 export default function DashboardPage() {
   const router = useRouter();
-
-  // State
-  const [result, setResult] = useState<{
-    area: string;
-    level: number;
-    status: string;
-  } | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [areas, setAreas] = useState<DashboardArea[]>([
+    { key: "NON_TIK", title: "Memuat hasil..." },
+  ]);
+  const [activeIndex, setActiveIndex] = useState(0);
 
-  useEffect(() => {
-    const fetchMapping = async () => {
-      const token = localStorage.getItem("token");
-      if (!token) {
-        router.push("/login");
+  const keys = useMemo(() => areas.map((a) => a.key), [areas]);
+  const active = areas[activeIndex] ?? areas[0];
+
+  async function loadFromChatHistory() {
+    setLoading(true);
+    try {
+      const history = await getChatHistory();
+      const latest = [...(history ?? [])].sort((a, b) => a.id - b.id).at(-1);
+
+      const raw = latest ? extractResultTag(latest.ai_response) : null;
+      if (!raw) {
+        setAreas([
+          { key: "NON_TIK", title: "Hasil belum tersedia", rawArea: "" },
+        ]);
+        setActiveIndex(0);
         return;
       }
 
-      try {
-        setLoading(true);
-        const response = await fetch("http://localhost:8001/ai/mapping", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
+      const parsed = safeJsonParse(raw);
+      const area_fungsi = String(parsed?.area_fungsi ?? "");
+      const levelNum =
+        typeof parsed?.level === "number"
+          ? parsed.level
+          : Number.isFinite(Number(parsed?.level))
+          ? Number(parsed.level)
+          : undefined;
+
+      const key = mapAreaToKey(area_fungsi);
+
+      if (key === "NON_TIK" || !area_fungsi || !levelNum) {
+        setAreas([
+          {
+            key: "NON_TIK",
+            title: "Non TIK",
+            rawArea: area_fungsi || "Non TIK",
           },
-          body: JSON.stringify({}),
-        });
-
-        if (!response.ok) throw new Error("Gagal mengambil data mapping.");
-
-        const json: MappingResponse = await response.json();
-
-        if (json.data) {
-          let foundArea = "Belum Terpetakan";
-          let foundLevel = 0;
-          let foundStatus = "unassessed";
-
-          for (const [key, value] of Object.entries(json.data)) {
-            if (value && value.level_kompetensi > 0) {
-              foundArea = key.replace(/_/g, " ");
-              foundLevel = value.level_kompetensi;
-              foundStatus = value.status || "unassessed"; // Ambil status dari BE
-              break;
-            }
-          }
-
-          setResult({
-            area: foundArea,
-            level: foundLevel,
-            status: foundStatus,
-          });
-        }
-      } catch (err: any) {
-        console.error(err);
-        setError("Gagal memuat data. Pastikan sudah interview.");
-      } finally {
-        setLoading(false);
+        ]);
+        setActiveIndex(0);
+        return;
       }
-    };
 
-    fetchMapping();
-  }, [router]);
+      const meta = RECOMMENDATIONS[key];
 
-  const handleGoToAssessment = () => {
-    if (result) {
-      router.push(`/assessment?area=${encodeURIComponent(result.area)}`);
+      // --- LOGIC STATUS BARU ---
+      // Backend mengirim "Lulus", "Gagal", "Unassessed", atau "Assessed" (legacy)
+      const rawStatus = String(parsed?.status ?? "Unassessed");
+
+      let finalStatus: AssessStatus = "Unassessed";
+      if (rawStatus.toLowerCase() === "lulus") finalStatus = "Lulus";
+      else if (rawStatus.toLowerCase() === "gagal") finalStatus = "Gagal";
+      else if (rawStatus.toLowerCase() === "assessed") finalStatus = "Lulus"; // Fallback jika data lama
+
+      setAreas([
+        {
+          key,
+          title: meta.title,
+          level: levelNum,
+          status: finalStatus,
+          recommendations: meta.recommendations,
+          rawArea: area_fungsi,
+        },
+      ]);
+      setActiveIndex(0);
+    } catch (e) {
+      console.error("Gagal load dashboard mapping:", e);
+      setAreas([{ key: "NON_TIK", title: "Gagal memuat hasil", rawArea: "" }]);
+      setActiveIndex(0);
+    } finally {
+      setLoading(false);
     }
-  };
+  }
 
-  // --- Helper Warna Badge ---
-  const getStatusBadge = (status: string) => {
-    if (status === "lulus") {
-      return (
-        <span className="px-4 py-1 rounded-full bg-green-100 text-green-700 font-bold border border-green-300">
-          LULUS
-        </span>
-      );
-    } else if (status === "gagal") {
-      return (
-        <span className="px-4 py-1 rounded-full bg-red-100 text-red-700 font-bold border border-red-300">
-          BELUM LULUS
-        </span>
-      );
-    } else {
-      return (
-        <span className="px-4 py-1 rounded-full bg-gray-100 text-gray-600 font-bold border border-gray-300">
-          UNASSESSED
-        </span>
-      );
-    }
-  };
+  useEffect(() => {
+    loadFromChatHistory();
+  }, []);
 
-  if (loading)
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin h-10 w-10 border-b-2 border-blue-600 rounded-full"></div>
-      </div>
-    );
+  const handlePrev = () =>
+    setActiveIndex((i) => (i - 1 + keys.length) % keys.length);
+  const handleNext = () => setActiveIndex((i) => (i + 1) % keys.length);
+  const handleGoToProfile = () => router.push("/profile");
+  const handleGoToAssessment = () =>
+    router.push(`/assessment?area=${active.key}`);
+  const handleGoToDTS = () =>
+    window.open("https://digitalent.kominfo.go.id/", "_blank");
+
+  const isNonTik = active.key === "NON_TIK";
+  const isPassed = active.status === "Lulus";
+  const isFailed = active.status === "Gagal";
+
+  // Helper Warna Badge
+  const getBadgeColor = (status?: AssessStatus) => {
+    if (status === "Lulus")
+      return "bg-green-50 text-green-700 border border-green-200";
+    if (status === "Gagal")
+      return "bg-red-50 text-red-700 border border-red-200";
+    return "bg-yellow-50 text-yellow-800 border border-yellow-200";
+  };
 
   return (
-    <div className="flex flex-col min-h-screen">
-      <Navbar />
-      <main className="flex-1 bg-blue-50 pt-24 pb-16">
-        <div className="max-w-4xl mx-auto px-4">
-          <div className="text-center mb-10">
-            <h1 className="text-3xl font-bold text-gray-900">
-              Dashboard Kompetensi
-            </h1>
-            <p className="text-gray-600 mt-2">
-              Status assessment Anda saat ini
-            </p>
-          </div>
-
-          <div className="bg-white rounded-2xl shadow-xl p-8 md:p-12 relative overflow-hidden">
-            {/* Background Decoration */}
-            <div className="absolute top-0 right-0 w-32 h-32 bg-blue-50 rounded-bl-full opacity-50"></div>
-
-            {error ? (
-              <div className="text-center">
-                <p className="text-red-500 mb-4">{error}</p>
-                <Button onClick={() => router.push("/interview")}>
-                  Mulai Interview
-                </Button>
-              </div>
-            ) : (
-              <div className="flex flex-col items-center text-center space-y-8">
-                {/* Bagian Level & Status */}
-                <div className="relative">
-                  <div className="h-40 w-40 rounded-full bg-gradient-to-br from-blue-50 to-white flex flex-col items-center justify-center border-[6px] border-blue-100 shadow-inner">
-                    <span className="text-xs font-bold text-blue-500 tracking-widest mb-1">
-                      LEVEL
-                    </span>
-                    <span className="text-6xl font-extrabold text-blue-700">
-                      {result?.level}
-                    </span>
-                  </div>
-                  {/* Badge Status Melayang di Bawah Level */}
-                  <div className="absolute -bottom-4 left-1/2 transform -translate-x-1/2 shadow-md rounded-full">
-                    {getStatusBadge(result?.status || "unassessed")}
-                  </div>
-                </div>
-
-                {/* Nama Area */}
-                <div className="pt-4">
-                  <h2 className="text-2xl font-bold text-gray-800">
-                    {result?.area}
-                  </h2>
-                  <p className="text-gray-500 mt-2 max-w-md mx-auto text-sm">
-                    {result?.status === "lulus"
-                      ? "Selamat! Kompetensi Anda telah tervalidasi di level ini."
-                      : "Selesaikan assessment untuk memvalidasi level kompetensi Anda."}
-                  </p>
-                </div>
-
-                {/* Tombol Aksi */}
-                <div className="w-full max-w-xs">
-                  {result?.status === "lulus" ? (
-                    <Button
-                      className="w-full h-12 rounded-full bg-green-600 hover:bg-green-700 font-bold shadow-lg"
-                      disabled
-                    >
-                      ✅ Assessment Selesai
-                    </Button>
-                  ) : (
-                    <Button
-                      onClick={handleGoToAssessment}
-                      className="w-full h-12 rounded-full bg-blue-600 hover:bg-blue-700 font-bold text-lg shadow-lg shadow-blue-200"
-                    >
-                      {result?.status === "gagal"
-                        ? "Coba Lagi"
-                        : "Mulai Assessment"}
-                    </Button>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
+    <div className="min-h-screen bg-[#F6FAFF] flex flex-col items-center py-10 px-4">
+      <div className="w-full max-w-5xl">
+        <div className="flex justify-center mb-3 gap-2">
+          {keys.map((k, idx) => (
+            <span
+              key={`${k}-${idx}`}
+              className={`w-2 h-2 rounded-full ${
+                idx === activeIndex ? "bg-blue-600" : "bg-blue-200"
+              }`}
+            />
+          ))}
         </div>
-      </main>
-      <Footer />
+
+        <div className="relative">
+          <button
+            onClick={handlePrev}
+            disabled={keys.length <= 1}
+            className="absolute -left-3 top-1/2 -translate-y-1/2 p-2 rounded-full bg-white shadow disabled:opacity-40"
+          >
+            <ChevronLeft />
+          </button>
+          <button
+            onClick={handleNext}
+            disabled={keys.length <= 1}
+            className="absolute -right-3 top-1/2 -translate-y-1/2 p-2 rounded-full bg-white shadow disabled:opacity-40"
+          >
+            <ChevronRight />
+          </button>
+
+          <Card className="rounded-2xl shadow-md border border-blue-100">
+            <CardContent className="p-8">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  {!isNonTik && (
+                    <span className="text-xs font-semibold px-3 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                      {loading ? "..." : `LEVEL ${active.level ?? "-"}`}
+                    </span>
+                  )}
+                  <h2 className="text-2xl font-bold">
+                    {loading ? "Memuat..." : active.title}
+                  </h2>
+                </div>
+
+                {!isNonTik && (
+                  <span
+                    className={`text-xs font-semibold px-3 py-1 rounded-full ${getBadgeColor(
+                      active.status
+                    )}`}
+                  >
+                    {loading ? "..." : active.status}
+                  </span>
+                )}
+              </div>
+
+              <div className="mt-6 border-t pt-6">
+                {isNonTik ? (
+                  <div className="space-y-3">
+                    <p className="text-sm text-slate-700">
+                      Hasil chatbot belum dapat memetakan Anda ke area TIK.
+                      {active.rawArea ? (
+                        <>
+                          {" "}
+                          Output: <b>{active.rawArea}</b>
+                        </>
+                      ) : null}
+                    </p>
+                    <div className="pt-2">
+                      <Button
+                        onClick={handleGoToProfile}
+                        className="rounded-full px-8"
+                      >
+                        Update Profile
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <h3 className="font-semibold mb-2">
+                      Rekomendasi Pembelajaran
+                    </h3>
+                    <ul className="list-disc list-inside text-sm text-slate-700 space-y-1">
+                      {(active.recommendations ?? []).map((x) => (
+                        <li key={x}>{x}</li>
+                      ))}
+                    </ul>
+
+                    <div className="mt-6 flex gap-4">
+                      {/* Tombol berubah tergantung status Lulus/Gagal */}
+                      {isPassed ? (
+                        <>
+                          <Button
+                            onClick={handleGoToDTS}
+                            className="rounded-full px-8 flex-1 bg-blue-600 hover:bg-blue-700"
+                          >
+                            Go to DTS
+                          </Button>
+                          <Button
+                            variant="outline"
+                            onClick={handleGoToProfile}
+                            className="rounded-full px-8 flex-1 border-blue-200"
+                          >
+                            Upgrade Level
+                          </Button>
+                        </>
+                      ) : (
+                        <Button
+                          onClick={handleGoToAssessment}
+                          className="rounded-full px-8 flex-1 bg-blue-600 hover:bg-blue-700"
+                        >
+                          {isFailed
+                            ? "Coba Lagi Assessment"
+                            : "Kerjakan Assessment"}
+                        </Button>
+                      )}
+                    </div>
+
+                    <div className="mt-4">
+                      <button
+                        type="button"
+                        onClick={loadFromChatHistory}
+                        className="text-xs text-blue-600 underline"
+                      >
+                        Refresh hasil dari chatbot
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="mt-6 text-center text-xs text-slate-500">
+          {isNonTik
+            ? "Jika sudah update profil, kembali ke chatbot."
+            : `Area sumber: ${active.rawArea ?? "-"}`}
+        </div>
+        <div className="mt-6 text-center">
+          <Link href="/chatbot" className="text-sm text-blue-600 underline">
+            Kembali ke Chatbot
+          </Link>
+        </div>
+      </div>
     </div>
   );
 }

@@ -7,10 +7,13 @@ from app.api import deps
 from app import models
 from datetime import date, datetime
 from typing import List
-import re  # <--- Tambahan penting untuk Regex
+import re 
+import json # <--- WAJIB ADA AGAR SINKRONISASI JALAN
 
 router = APIRouter(prefix="/ai", tags=["AI Integration"])
 ai_service = AIService()
+
+# --- HELPER FUNCTIONS ---
 
 def calculate_duration(start_date: date, end_date: date = None):
     if not start_date:
@@ -91,14 +94,14 @@ def format_profile_for_ai(user: models.User, profile: models.Profile, educations
     
     return prompt_text
 
-# Fungsi Helper untuk membersihkan tag <think>
 def clean_think_tag(text: str) -> str:
     if not text:
         return ""
-    # Regex untuk menghapus <think>...</think> termasuk newlines (DOTALL)
     cleaned = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
     return cleaned.strip()
 
+
+# --- ENDPOINTS ---
 
 @router.post("/interview/start", response_model=ai_schema.InterviewResponse)
 async def start_interview_session(
@@ -122,15 +125,13 @@ async def start_interview_session(
         history=[] 
     )
     
-    # --- BERSIHKAN RESPONSE SEBELUM DISIMPAN/DIKEMBALIKAN ---
     clean_response = clean_think_tag(ai_result.data.answer)
     ai_result.data.answer = clean_response
-    # --------------------------------------------------------
     
     new_log = models.InterviewLog(
         user_id=current_user.id,
         user_prompt=user_data_prompt,
-        ai_response=clean_response # Simpan yang sudah bersih
+        ai_response=clean_response 
     )
     db.add(new_log)
     db.commit()
@@ -144,18 +145,15 @@ async def chat_interview(
     current_user: models.User = Depends(deps.get_current_user),
     db: Session = Depends(get_db)
 ):
-    # 1. Ambil History Chat Sebelumnya
     past_logs = db.query(models.InterviewLog).filter(
         models.InterviewLog.user_id == current_user.id
     ).order_by(models.InterviewLog.created_at.asc()).all()
     
-    # 2. Susun History Murni
     history_payload = []
     for log in past_logs:
         history_payload.append({"role": "user", "content": log.user_prompt})
         history_payload.append({"role": "assistant", "content": log.ai_response})
      
-    # 3. Prompt Injection (Breadth First Strategy)
     prompt_for_ai = (
         f"{request.prompt}\n\n"
         "(Instruksi Sistem: Terima kasih atas jawabannya. Sekarang, silakan LIHAT KEMBALI data profil awal kandidat. "
@@ -164,19 +162,15 @@ async def chat_interview(
         "Jangan menggali topik yang sama terlalu dalam jika informasi dasar sudah didapat.)"
     )
 
-    # 4. Kirim ke AI
     ai_result = await ai_service.get_interview_reply(prompt_for_ai, history_payload)
     
-    # --- BERSIHKAN RESPONSE SEBELUM DISIMPAN/DIKEMBALIKAN ---
     clean_response = clean_think_tag(ai_result.data.answer)
     ai_result.data.answer = clean_response
-    # --------------------------------------------------------
     
-    # 5. Simpan Chat BARU ke Database
     new_log = models.InterviewLog(
         user_id=current_user.id,
         user_prompt=request.prompt, 
-        ai_response=clean_response # Simpan yang sudah bersih
+        ai_response=clean_response
     )
     db.add(new_log)
     db.commit()
@@ -188,23 +182,56 @@ def get_chat_history(
     current_user: models.User = Depends(deps.get_current_user),
     db: Session = Depends(get_db)
 ):
+    # 1. Ambil logs dasar
     logs = db.query(models.InterviewLog).filter(
         models.InterviewLog.user_id == current_user.id
     ).order_by(models.InterviewLog.created_at.asc()).all()
     
-    # FILTER: Hapus log pertama jika itu adalah prompt profil otomatis
+    # 2. Cek Status Assessment Terbaru User
+    profile = db.query(models.Profile).filter(models.Profile.user_id == current_user.id).first()
+    latest_status = "Unassessed"
+    
+    if profile:
+        # Cek apakah ada hasil assessment
+        assessment = db.query(models.AssessmentResult).filter(
+            models.AssessmentResult.profile_id == profile.id
+        ).order_by(models.AssessmentResult.created_at.desc()).first()
+        
+        if assessment:
+            # --- UPDATE DI SINI ---
+            # Ambil status real (lulus/gagal) dari raw_data
+            # Format di DB biasanya lowercase "lulus"/"gagal", kita capitalize jadi "Lulus"/"Gagal"
+            raw_status = assessment.raw_data.get("status", "Assessed")
+            latest_status = raw_status.capitalize() 
+
+    # 3. Proses Logs: Suntikkan status terbaru ke dalam JSON log
     cleaned_logs = []
     for log in logs:
         if log.user_prompt.startswith("Berikut data singkat saya"):
-            # Kosongkan user_prompt agar Frontend menyembunyikannya
             log.user_prompt = "" 
-            cleaned_logs.append(log)
-        else:
-            cleaned_logs.append(log)
+        
+        if "<RESULT>" in log.ai_response:
+            try:
+                pattern = r"<RESULT>(.*?)</RESULT>"
+                match = re.search(pattern, log.ai_response, re.DOTALL)
+                
+                if match:
+                    json_str = match.group(1)
+                    data = json.loads(json_str)
+                    
+                    # TIMPA status lama dengan status real-time
+                    data['status'] = latest_status
+                    
+                    new_json_str = json.dumps(data)
+                    new_response = re.sub(pattern, f"<RESULT>{new_json_str}</RESULT>", log.ai_response, flags=re.DOTALL)
+                    log.ai_response = new_response
+            except Exception as e:
+                print(f"Error patching status in history: {e}")
+
+        cleaned_logs.append(log)
             
     return cleaned_logs
 
-# 2. Talent Mapping (Tetap Sama)
 @router.post("/mapping", response_model=ai_schema.MappingResponse)
 async def talent_mapping(
     current_user: models.User = Depends(deps.get_current_user),
@@ -217,7 +244,6 @@ async def talent_mapping(
     if not logs:
         full_text = "User belum melakukan interview."
     else:
-        # Bersihkan juga di sini untuk jaga-jaga
         full_text = " ".join([
             f"User berkata: {log.user_prompt}. AI menjawab: {clean_think_tag(log.ai_response)}." 
             for log in logs
@@ -225,6 +251,20 @@ async def talent_mapping(
 
     result = await ai_service.analyze_talent_mapping(full_text)
     
+    # Sinkronisasi manual untuk endpoint mapping juga
+    profile = db.query(models.Profile).filter(models.Profile.user_id == current_user.id).first()
+    if profile:
+        assessment_result = db.query(models.AssessmentResult).filter(
+            models.AssessmentResult.profile_id == profile.id
+        ).order_by(models.AssessmentResult.created_at.desc()).first()
+
+        if assessment_result:
+            real_status = assessment_result.raw_data.get("status", "unassessed")
+            if result.data:
+                for area_key, area_data in result.data.items():
+                    if area_data and area_data.level_kompetensi > 0:
+                        area_data.status = real_status
+
     return result
  
 @router.post("/questions", response_model=ai_schema.QuestionResponse)
@@ -240,30 +280,24 @@ def submit_assessment(
     current_user: models.User = Depends(deps.get_current_user),
     db: Session = Depends(get_db)
 ):
-    # 1. Cari Profile User
     profile = db.query(models.Profile).filter(models.Profile.user_id == current_user.id).first()
     if not profile:
         raise HTTPException(status_code=404, detail="Profile not found")
 
-    # 2. HITUNG SKOR & STATUS TERLEBIH DAHULU (In-Memory)
     total_correct = 0
     total_soal = len(payload.jawaban)
-    processed_answers = [] # Tampung jawaban untuk disimpan nanti
+    processed_answers = [] 
 
     for ans in payload.jawaban:
-        kunci_huruf = ans.kunci_jawaban.lower() # misal "a"
-        # Ambil teks opsi yang benar (misal teks dari opsi A)
+        kunci_huruf = ans.kunci_jawaban.lower()
         teks_kunci = ans.opsi_jawaban.get(kunci_huruf, "").strip()
-        # Ambil jawaban user
         teks_user = ans.jawaban_user.strip()
 
-        # Logika Penilaian (Case Insensitive & Strip)
         is_correct = (teks_user.lower() == teks_kunci.lower())
         
         if is_correct:
             total_correct += 1
             
-        # Simpan data untuk insert DB nanti
         processed_answers.append({
             "question_no": ans.nomor_soal,
             "question_text": ans.soal,
@@ -273,24 +307,18 @@ def submit_assessment(
             "is_correct": is_correct
         })
     
-    # Rumus Skor
     final_score = (total_correct / total_soal) * 100 if total_soal > 0 else 0
-    
-    # TENTUKAN STATUS (Lulus/Gagal)
-    # Unassessed adalah kondisi default jika tidak ada data, jadi tidak perlu logic khusus di sini.
     status_assessment = "lulus" if final_score >= 80 else "gagal"
 
-    # 3. BARU SIMPAN KE DB (Assessment Attempt)
     new_attempt = models.AssessmentAttempt(
         profile_id=profile.id,
-        status=status_assessment, # Simpan status yang sudah dihitung
+        status=status_assessment, 
         submitted_at=datetime.now()
     )
     db.add(new_attempt)
     db.commit()
     db.refresh(new_attempt)
 
-    # 4. Simpan Detail Jawaban (AssessmentAnswer)
     for p_ans in processed_answers:
         db_ans = models.AssessmentAnswer(
             attempt_id=new_attempt.id,
@@ -303,12 +331,11 @@ def submit_assessment(
         )
         db.add(db_ans)
     
-    # 5. Simpan Hasil Akhir (AssessmentResult)
     new_result = models.AssessmentResult(
         attempt_id=new_attempt.id,
         profile_id=profile.id,
         score=final_score,
-        threshold=80.0, # Threshold lulus
+        threshold=80.0, 
         raw_data={
             "area": payload.area_fungsi, 
             "correct": total_correct, 
