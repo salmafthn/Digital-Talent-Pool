@@ -30,6 +30,34 @@ export interface EducationResponse extends EducationCreatePayload {
 }
 
 // =========================
+// EXPERIENCE (sesuai BE)
+// =========================
+export type JobType = "Kerja" | "Magang" | "Freelance" | "Tidak/belum bekerja"
+
+export type FunctionalArea =
+  | "Tata Kelola Teknologi Informasi (IT Governance)"
+  | "Pengembangan Produk Digital (Digital Product Development)"
+  | "Sains Data-Kecerdasan Artifisial (Data Science-AI)"
+  | "Keamanan Informasi dan Siber"
+  | "Teknologi dan Infrastruktur"
+  | "Layanan Teknologi Informasi"
+
+export interface ExperienceCreatePayload {
+  job_type: JobType
+  position: string
+  company_name: string
+  functional_area: FunctionalArea
+  start_date: string // "YYYY-MM-DD"
+  end_date?: string | null // null kalau is_current=true
+  is_current?: boolean
+  description: string
+}
+
+export interface ExperienceResponse extends ExperienceCreatePayload {
+  id: number
+}
+
+// =========================
 // CERTIFICATION (upload file)
 // =========================
 export interface CertificationResponse {
@@ -87,7 +115,7 @@ export interface ProfileFullResponse {
 
   educations: EducationResponse[]
   certifications: CertificationResponse[]
-  experiences: any[]
+  experiences: ExperienceResponse[]
 }
 
 // =========================
@@ -118,8 +146,10 @@ export const deleteEducation = async (id: number) => {
   return res.data
 }
 
-// ---- experience (biarin any dulu)
-export const addExperience = async (data: any) => {
+// ---- experience
+export const addExperience = async (
+  data: ExperienceCreatePayload,
+): Promise<ExperienceResponse> => {
   const res = await api.post("/profile/experience", data)
   return res.data
 }
