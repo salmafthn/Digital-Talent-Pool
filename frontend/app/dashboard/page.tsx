@@ -266,20 +266,6 @@ export default function DashboardPage() {
         </div>
 
         <div className="relative">
-          <button
-            onClick={handlePrev}
-            disabled={keys.length <= 1}
-            className="absolute -left-3 top-1/2 -translate-y-1/2 p-2 rounded-full bg-white shadow disabled:opacity-40"
-          >
-            <ChevronLeft />
-          </button>
-          <button
-            onClick={handleNext}
-            disabled={keys.length <= 1}
-            className="absolute -right-3 top-1/2 -translate-y-1/2 p-2 rounded-full bg-white shadow disabled:opacity-40"
-          >
-            <ChevronRight />
-          </button>
 
           <Card className="rounded-2xl shadow-md border border-blue-100">
             <CardContent className="p-8">
