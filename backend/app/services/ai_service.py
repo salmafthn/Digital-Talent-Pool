@@ -7,8 +7,7 @@ from app.schemas import ai_schema
 load_dotenv()
 
 class AIService:
-    def __init__(self):
-        # Pastikan ini mengarah ke IP VPS + Port yang benar (sesuai SSH Tunnel atau Direct)
+    def __init__(self): 
         self.base_url = os.getenv("TIM_AI_URL", "http://127.0.0.1:5000")
     
     async def _post_request(self, endpoint: str, payload: dict):
@@ -16,17 +15,14 @@ class AIService:
         print(f"🚀 Nembak ke: {url} | Payload: {payload}") 
 
         try:
-            # UPDATE: Konfigurasi Timeout Lengkap (Connect, Read, Write, Pool)
-            # Total 5 menit (300 detik) untuk menunggu AI mikir
+ 
             timeout_config = httpx.Timeout(300.0, connect=60.0)
-
-            # UPDATE: Disable Keep-Alive dengan header "Connection": "close"
-            # Ini mencegah error "Server disconnected" jika server AI menutup paksa soket
+ 
             async with httpx.AsyncClient(timeout=timeout_config) as client:
                 response = await client.post(
                     url, 
                     json=payload,
-                    headers={"Connection": "close"} # <--- PENTING: Paksa tutup koneksi setelah selesai
+                    headers={"Connection": "close"}  
                 ) 
                 
                 if response.status_code >= 400:
@@ -48,29 +44,25 @@ class AIService:
     # A. INTERVIEW (Update Format Payload)
     async def get_interview_reply(self, prompt: str, history: list = []) -> ai_schema.InterviewResponse:
         payload = {
-            "prompt": prompt,     # Isinya Data Profil User
-            "history": history    # Isinya System Prompt
+            "prompt": prompt,   
+            "history": history   
         }
         data = await self._post_request("/interview", payload)
         return ai_schema.InterviewResponse(**data)
-
-    # B. TALENT MAPPING (Update Format Payload)
+ 
     async def analyze_talent_mapping(self, full_interview_text: str) -> ai_schema.MappingResponse:
-        # Tim 3 minta 'input' dan 'history'. 
-        # Karena mapping sifatnya rangkuman, kita masukkan text gabungan ke 'input' 
-        # dan kosongkan history (atau sesuaikan kebutuhan mereka).
+ 
         
         payload = {
             "input": full_interview_text, 
-            "history": [] # Kosongkan karena kita kirim full text di input
+            "history": []  
         }
         
         data = await self._post_request("/talent-mapping", payload)
         return ai_schema.MappingResponse(**data)
-
-    # C. GENERATE SOAL (Cek apakah ini juga berubah?)
+ 
     async def generate_questions(self, area: str, level: int) -> ai_schema.QuestionResponse:
-        # Asumsi endpoint ini masih format lama, kalau error ubah juga
+ 
         payload = {
             "area_fungsi": area,
             "level_kompetensi": level

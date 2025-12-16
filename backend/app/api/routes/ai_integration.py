@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session        
 from app.core.db import get_db             
 from app.services.ai_service import AIService
@@ -8,10 +8,20 @@ from app import models
 from datetime import date, datetime
 from typing import List
 import re 
-import json # <--- WAJIB ADA AGAR SINKRONISASI JALAN
+import json  
 
 router = APIRouter(prefix="/ai", tags=["AI Integration"])
 ai_service = AIService()
+
+# --- MAPPING AREA ---
+AREA_MAPPING = {
+    "DSC": "Data Science",
+    "TKTI": "IT Governance",    
+    "PPD": "Digital Product Management", 
+    "CYBER": "Cyber Security",
+    "TI": "Teknologi Infrastruktur",
+    "LTI": "Layanan TI"
+}
 
 # --- HELPER FUNCTIONS ---
 
@@ -97,7 +107,18 @@ def format_profile_for_ai(user: models.User, profile: models.Profile, educations
 def clean_think_tag(text: str) -> str:
     if not text:
         return ""
+    
+    # 1. Cari tag <RESULT> di teks ASLI (sebelum dibersihkan)
+    result_match = re.search(r'<RESULT>.*?</RESULT>', text, flags=re.DOTALL)
+    result_content = result_match.group(0) if result_match else None
+    
+    # 2. Hapus <think>...</think> beserta isinya
     cleaned = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
+    
+    # 3. Logic Penyelamatan: Kembalikan RESULT jika hilang
+    if result_content and "<RESULT>" not in cleaned:
+        cleaned = cleaned.strip() + "\n\n" + result_content
+        
     return cleaned.strip()
 
 
@@ -115,11 +136,11 @@ async def start_interview_session(
 
     user_data_prompt = format_profile_for_ai(current_user, profile, educations, experiences, certifications)
     
-    # 1. Reset Session Lama
+    # Reset Session Lama
     db.query(models.InterviewLog).filter(models.InterviewLog.user_id == current_user.id).delete()
     db.commit()
 
-    # 2. Kirim Data Awal ke AI
+    # Kirim Data Awal ke AI
     ai_result = await ai_service.get_interview_reply(
         prompt=user_data_prompt,      
         history=[] 
@@ -145,6 +166,7 @@ async def chat_interview(
     current_user: models.User = Depends(deps.get_current_user),
     db: Session = Depends(get_db)
 ):
+    # Ambil history chat sebelumnya
     past_logs = db.query(models.InterviewLog).filter(
         models.InterviewLog.user_id == current_user.id
     ).order_by(models.InterviewLog.created_at.asc()).all()
@@ -154,15 +176,8 @@ async def chat_interview(
         history_payload.append({"role": "user", "content": log.user_prompt})
         history_payload.append({"role": "assistant", "content": log.ai_response})
      
-    prompt_for_ai = (
-        f"{request.prompt}\n\n"
-        "(Instruksi Sistem: Terima kasih atas jawabannya. Sekarang, silakan LIHAT KEMBALI data profil awal kandidat. "
-        "Ajukan satu pertanyaan baru untuk memvalidasi aspek profil LAINNYA yang BELUM ditanyakan (misalnya: jika tadi Pendidikan, sekarang tanya Sertifikasi, Pengalaman, atau Skill). "
-        "Pastikan pertanyaan relevan dengan informasi yang tertulis di profil kandidat. "
-        "Jangan menggali topik yang sama terlalu dalam jika informasi dasar sudah didapat.)"
-    )
-
-    ai_result = await ai_service.get_interview_reply(prompt_for_ai, history_payload)
+    # --- UPDATE: LANGSUNG KIRIM INPUT USER TANPA TAMBAHAN INSTRUKSI ---
+    ai_result = await ai_service.get_interview_reply(request.prompt, history_payload)
     
     clean_response = clean_think_tag(ai_result.data.answer)
     ai_result.data.answer = clean_response
@@ -182,31 +197,25 @@ def get_chat_history(
     current_user: models.User = Depends(deps.get_current_user),
     db: Session = Depends(get_db)
 ):
-    # 1. Ambil logs dasar
     logs = db.query(models.InterviewLog).filter(
         models.InterviewLog.user_id == current_user.id
     ).order_by(models.InterviewLog.created_at.asc()).all()
-    
-    # 2. Cek Status Assessment Terbaru User
+     
     profile = db.query(models.Profile).filter(models.Profile.user_id == current_user.id).first()
     latest_status = "Unassessed"
     
-    if profile:
-        # Cek apakah ada hasil assessment
+    if profile: 
         assessment = db.query(models.AssessmentResult).filter(
             models.AssessmentResult.profile_id == profile.id
         ).order_by(models.AssessmentResult.created_at.desc()).first()
         
-        if assessment:
-            # --- UPDATE DI SINI ---
-            # Ambil status real (lulus/gagal) dari raw_data
-            # Format di DB biasanya lowercase "lulus"/"gagal", kita capitalize jadi "Lulus"/"Gagal"
+        if assessment: 
             raw_status = assessment.raw_data.get("status", "Assessed")
             latest_status = raw_status.capitalize() 
-
-    # 3. Proses Logs: Suntikkan status terbaru ke dalam JSON log
+ 
     cleaned_logs = []
     for log in logs:
+        # Sembunyikan prompt data diri yang panjang di history user
         if log.user_prompt.startswith("Berikut data singkat saya"):
             log.user_prompt = "" 
         
@@ -218,8 +227,7 @@ def get_chat_history(
                 if match:
                     json_str = match.group(1)
                     data = json.loads(json_str)
-                    
-                    # TIMPA status lama dengan status real-time
+ 
                     data['status'] = latest_status
                     
                     new_json_str = json.dumps(data)
@@ -250,8 +258,7 @@ async def talent_mapping(
         ])
 
     result = await ai_service.analyze_talent_mapping(full_text)
-    
-    # Sinkronisasi manual untuk endpoint mapping juga
+     
     profile = db.query(models.Profile).filter(models.Profile.user_id == current_user.id).first()
     if profile:
         assessment_result = db.query(models.AssessmentResult).filter(
@@ -272,7 +279,11 @@ async def generate_questions(
     request: ai_schema.QuestionRequest,
     current_user: models.User = Depends(deps.get_current_user)
 ):
-    return await ai_service.generate_questions(request.area_fungsi, request.level_kompetensi)
+ 
+    nama_panjang = AREA_MAPPING.get(request.area_fungsi, request.area_fungsi)
+    print(f"🔄 Mapping Area: {request.area_fungsi} -> {nama_panjang}")
+    
+    return await ai_service.generate_questions(nama_panjang, request.level_kompetensi)
 
 @router.post("/assessment/submit", response_model=ai_schema.AssessmentResultResponse)
 def submit_assessment(

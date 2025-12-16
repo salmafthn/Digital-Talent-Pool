@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Navbar from "@/components/navbar";
 import Footer from "@/components/footer";
@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useAssessmentStore } from "@/lib/store";
 
-// Definisi Tipe Data dari Backend
+ 
 interface BackendQuestion {
   nomor_soal: number;
   soal: string;
@@ -20,8 +20,7 @@ interface BackendQuestion {
   };
   jawaban_benar: string;
 }
-
-// Definisi Tipe Data untuk Frontend (Format Lama)
+ 
 interface FrontendQuestion {
   id: number;
   question: string;
@@ -32,7 +31,6 @@ interface FrontendQuestion {
 
 export default function AssessmentPage() {
   const router = useRouter();
-  // Ambil activeArea dari Store (misal: "Sains Data...")
   const { activeArea, completeAssessment } = useAssessmentStore();
 
   const [questions, setQuestions] = useState<FrontendQuestion[]>([]);
@@ -43,47 +41,64 @@ export default function AssessmentPage() {
   const [answers, setAnswers] = useState<Record<number, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // --- 1. FETCH QUESTIONS DARI BACKEND ---
+  // --- TAMBAHAN: Ref untuk mencegah double fetch ---
+  const hasFetched = useRef(false);
+  // --- 1. FETCH QUESTIONS DENGAN AUTO-RETRY ---
   useEffect(() => {
-    const fetchQuestions = async () => {
-      // Cek apakah user punya token (Login dulu!)
+    // Fungsi Fetch yang bisa dipanggil ulang
+    const fetchQuestions = async (retryCount = 0) => {
       const token = localStorage.getItem("token");
       if (!token) {
         router.push("/login");
         return;
       }
 
-      // Cek apakah area sudah dipilih
       if (!activeArea) {
         setError("Silakan pilih area assessment terlebih dahulu di dashboard.");
         setLoading(false);
         return;
       }
 
+      // Mapping Area (Pastikan ini ada)
+      const AREA_MAPPING_FE: Record<string, string> = {
+        DSC: "Data Science",
+        TKTI: "IT Governance",
+        PPD: "Digital Product Management",
+        CYBER: "Cyber Security",
+        TI: "Teknologi Infrastruktur",
+        LTI: "Layanan TI",
+      };
+      const areaToSend = AREA_MAPPING_FE[activeArea] || activeArea;
+
       try {
         setLoading(true);
-        // Hit ke Backend DTP (Gunakan Port 8001 sesuai setup terakhir)
-        const response = await fetch("http://localhost:8001/ai/questions", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`, // Backend butuh ini
-          },
-          body: JSON.stringify({
-            area_fungsi: activeArea, // Dikirim dinamis sesuai pilihan user
-            level_kompetensi: 1, // Default level 1 dulu
-          }),
-        });
+        console.log(`🚀 Percobaan ke-${retryCount + 1}. Mengirim:`, areaToSend);
+
+        const response = await fetch(
+          `${
+            process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001"
+          }/ai/questions`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              area_fungsi: areaToSend,
+              level_kompetensi: 1,
+            }),
+          }
+        );
 
         if (!response.ok) {
           const errData = await response.json();
+          // Jika errornya dari AI (NoneType), kita anggap "Bad Luck" dan coba lagi
           throw new Error(errData.detail || "Gagal mengambil soal");
         }
 
         const data = await response.json();
 
-        // Mapping Data: Backend Format -> Frontend Format
-        // Backend return: { success: true, data: { kumpulan_soal: [...] } }
         if (data.data && data.data.kumpulan_soal) {
           const mappedQuestions = data.data.kumpulan_soal.map(
             (q: BackendQuestion) => ({
@@ -95,26 +110,40 @@ export default function AssessmentPage() {
                 q.opsi_jawaban.c,
                 q.opsi_jawaban.d,
               ],
-              raw_options: q.opsi_jawaban, // Simpan object aslinya
-              correct_key: q.jawaban_benar, // Simpan kunci jawaban ("a", "b", dst)
+              raw_options: q.opsi_jawaban,
+              correct_key: q.jawaban_benar,
             })
           );
           setQuestions(mappedQuestions);
+          setLoading(false); // Sukses! Stop loading.
         } else {
           throw new Error("Format respon backend tidak sesuai");
         }
       } catch (err: any) {
-        console.error("Error fetching questions:", err);
-        setError(err.message || "Terjadi kesalahan sistem (Cek koneksi AI)");
-      } finally {
-        setLoading(false);
+        console.error(`Gagal percobaan ke-${retryCount + 1}:`, err);
+
+        // --- LOGIC AUTO RETRY ---
+        // Jika gagal dan belum mencoba 3 kali, coba lagi!
+        if (retryCount < 2) {
+          // Maksimal 3x percobaan (0, 1, 2)
+          console.log("♻️ Mencoba request ulang ke AI...");
+          setTimeout(() => {
+            fetchQuestions(retryCount + 1); // Panggil diri sendiri (Rekursif)
+          }, 1000); // Tunggu 1 detik sebelum coba lagi
+        } else {
+          // Jika sudah 3x tetap gagal, baru tampilkan error ke user
+          setError(
+            "AI sedang sibuk atau tidak stabil. Silakan refresh halaman."
+          );
+          setLoading(false);
+        }
       }
     };
 
+    // Jalankan fungsi pertama kali
     fetchQuestions();
   }, [activeArea, router]);
 
-  // --- LOGIC BAWAAN (TIDAK BERUBAH BANYAK) ---
   const handleAnswerChange = (answer: string) => {
     if (!questions[currentQuestion]) return;
     setAnswers((prev) => ({
@@ -136,52 +165,55 @@ export default function AssessmentPage() {
       setCurrentQuestion(currentQuestion + 1);
   };
 
-const handleSubmit = async () => {
-  setIsSubmitting(true);
-  const token = localStorage.getItem("token");
+  const handleSubmit = async () => {
+    setIsSubmitting(true);
+    const token = localStorage.getItem("token");
 
-  try {
-    // Susun Payload sesuai Schema Backend
-    const payload = {
-      area_fungsi: activeArea,
-      jawaban: questions.map((q) => ({
-        nomor_soal: q.id,
-        soal: q.question,
-        opsi_jawaban: q.raw_options,
-        jawaban_user: answers[q.id] || "",
-        kunci_jawaban: q.correct_key,
-      })),
-    };
+    try {
+      // Susun Payload sesuai Schema Backend
+      const payload = {
+        area_fungsi: activeArea,
+        jawaban: questions.map((q) => ({
+          nomor_soal: q.id,
+          soal: q.question,
+          opsi_jawaban: q.raw_options,
+          jawaban_user: answers[q.id] || "",
+          kunci_jawaban: q.correct_key,
+        })),
+      };
 
-    const response = await fetch("http://localhost:8001/ai/assessment/submit", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify(payload),
-    });
+      const response = await fetch(
+        "http://localhost:8001/ai/assessment/submit",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(payload),
+        }
+      );
 
-    if (!response.ok) {
-      throw new Error("Gagal mengirim jawaban.");
+      if (!response.ok) {
+        throw new Error("Gagal mengirim jawaban.");
+      }
+
+      // const result = await response.json(); // Data hasil tetap diterima tapi tidak dipakai untuk alert
+
+      // HANYA TAMPILKAN PESAN SUKSES (Tanpa Skor)
+      alert(
+        "Assessment Selesai! Terima kasih telah mengerjakan. Silakan cek status kelulusan di Dashboard."
+      );
+
+      completeAssessment(activeArea);
+      router.push("/dashboard");
+    } catch (err) {
+      console.error(err);
+      alert("Gagal menyimpan jawaban. Silakan coba lagi.");
+    } finally {
+      setIsSubmitting(false);
     }
-
-    // const result = await response.json(); // Data hasil tetap diterima tapi tidak dipakai untuk alert
-
-    // HANYA TAMPILKAN PESAN SUKSES (Tanpa Skor)
-    alert(
-      "Assessment Selesai! Terima kasih telah mengerjakan. Silakan cek status kelulusan di Dashboard."
-    );
-
-    completeAssessment(activeArea);
-    router.push("/dashboard");
-  } catch (err) {
-    console.error(err);
-    alert("Gagal menyimpan jawaban. Silakan coba lagi.");
-  } finally {
-    setIsSubmitting(false);
-  }
-};
+  };
 
   // --- RENDER LOADING STATE ---
   if (loading) {

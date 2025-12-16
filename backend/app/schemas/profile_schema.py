@@ -128,13 +128,13 @@ class CertificationResponse(CertificationBase):
 
 # --- SCHEMAS UNTUK PENGALAMAN ---
 class ExperienceBase(BaseModel):
-    job_type: JobTypeEnum                # Dropdown Jenis
-    position: str                        # Jabatan
-    company_name: str                    # Nama Perusahaan
-    functional_area: FunctionalAreaEnum  # Dropdown Bidang Pekerjaan
-    start_date: date                     # Format kirim JSON: "YYYY-MM-DD"
-    end_date: Optional[date] = None      # Opsional jika is_current=True
-    is_current: bool = False             # Checkbox "Masih bekerja"
+    job_type: JobTypeEnum                
+    position: str                        
+    company_name: str                   
+    functional_area: FunctionalAreaEnum  
+    start_date: date                     
+    end_date: Optional[date] = None     
+    is_current: bool = False       
     description: str
 
     # Validasi Logika: Jika masih bekerja, end_date harus kosong
