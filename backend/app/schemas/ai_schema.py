@@ -37,6 +37,7 @@ class MappingResponse(BaseModel):
     success: bool
     message: str
     data: Dict[str, CompetencyLevel] 
+    
 
 # --- C. SCHEMA QUESTION GENERATION ---
 class QuestionRequest(BaseModel):

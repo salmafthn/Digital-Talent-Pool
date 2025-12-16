@@ -97,7 +97,21 @@ def format_profile_for_ai(user: models.User, profile: models.Profile, educations
 def clean_think_tag(text: str) -> str:
     if not text:
         return ""
+    
+    # 1. Cari tag <RESULT> di teks ASLI (sebelum dibersihkan)
+    #    Kita amankan dulu isinya jaga-jaga kalau dia ada di dalam <think>
+    result_match = re.search(r'<RESULT>.*?</RESULT>', text, flags=re.DOTALL)
+    result_content = result_match.group(0) if result_match else None
+    
+    # 2. Hapus <think>...</think> beserta isinya
     cleaned = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
+    
+    # 3. Logic Penyelamatan:
+    #    Jika di teks asli ADA <RESULT>, tapi di teks bersih HILANG,
+    #    berarti <RESULT> tadi ada di dalam <think>. Kita harus tempel balik!
+    if result_content and "<RESULT>" not in cleaned:
+        cleaned = cleaned.strip() + "\n\n" + result_content
+        
     return cleaned.strip()
 
 
