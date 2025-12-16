@@ -8,7 +8,7 @@ from app import models
 from datetime import date, datetime
 from typing import List
 import re 
-import json # <--- WAJIB ADA AGAR SINKRONISASI JALAN
+import json  
 
 router = APIRouter(prefix="/ai", tags=["AI Integration"])
 ai_service = AIService()
@@ -200,25 +200,19 @@ def get_chat_history(
     logs = db.query(models.InterviewLog).filter(
         models.InterviewLog.user_id == current_user.id
     ).order_by(models.InterviewLog.created_at.asc()).all()
-    
-    # 2. Cek Status Assessment Terbaru User
+     
     profile = db.query(models.Profile).filter(models.Profile.user_id == current_user.id).first()
     latest_status = "Unassessed"
     
-    if profile:
-        # Cek apakah ada hasil assessment
+    if profile: 
         assessment = db.query(models.AssessmentResult).filter(
             models.AssessmentResult.profile_id == profile.id
         ).order_by(models.AssessmentResult.created_at.desc()).first()
         
-        if assessment:
-            # --- UPDATE DI SINI ---
-            # Ambil status real (lulus/gagal) dari raw_data
-            # Format di DB biasanya lowercase "lulus"/"gagal", kita capitalize jadi "Lulus"/"Gagal"
+        if assessment: 
             raw_status = assessment.raw_data.get("status", "Assessed")
             latest_status = raw_status.capitalize() 
-
-    # 3. Proses Logs: Suntikkan status terbaru ke dalam JSON log
+ 
     cleaned_logs = []
     for log in logs:
         if log.user_prompt.startswith("Berikut data singkat saya"):
@@ -232,8 +226,7 @@ def get_chat_history(
                 if match:
                     json_str = match.group(1)
                     data = json.loads(json_str)
-                    
-                    # TIMPA status lama dengan status real-time
+ 
                     data['status'] = latest_status
                     
                     new_json_str = json.dumps(data)
@@ -264,8 +257,7 @@ async def talent_mapping(
         ])
 
     result = await ai_service.analyze_talent_mapping(full_text)
-    
-    # Sinkronisasi manual untuk endpoint mapping juga
+     
     profile = db.query(models.Profile).filter(models.Profile.user_id == current_user.id).first()
     if profile:
         assessment_result = db.query(models.AssessmentResult).filter(
