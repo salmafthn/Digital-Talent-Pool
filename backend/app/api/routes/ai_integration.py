@@ -12,6 +12,7 @@ import json
 
 router = APIRouter(prefix="/ai", tags=["AI Integration"])
 ai_service = AIService()
+SYSTEM_PROMPT_TEXT = """Anda adalah interviewer dari platform talenta digital Diploy khusus Area Fungsi. Tugas Anda adalah menggali detail kompetensi talenta berdasarkan data awal yang diberikan, meluruskan jawaban yang kurang relevan, dan memastikan informasi yang terkumpul cukup tajam untuk pemetaan Area Fungsi dan Level Okupasi. Gunakan bahasa Indonesia yang baik dan benar, tetap profesional, dan jangan menggunakan bahasa gaul atau singkatan informal."""
 
 # --- MAPPING AREA ---
 AREA_MAPPING = {
@@ -24,6 +25,36 @@ AREA_MAPPING = {
 }
 
 # --- HELPER FUNCTIONS ---
+def build_chatml_prompt(system_prompt: str, history_logs: list, current_input: str) -> str:
+    """
+    Menyusun prompt panjang dengan format ChatML:
+    <|im_start|>system
+    ...
+    <|im_end|>
+    <|im_start|>user
+    ...
+    <|im_end|>
+    ...
+    """
+    # 1. Mulai dengan System Prompt
+    full_prompt = f"<|im_start|>system\n{system_prompt}\n<|im_end|>\n"
+
+    # 2. Masukkan History (jika ada)
+    # History diambil dari DB (user_prompt & ai_response)
+    for log in history_logs:
+        # User turn lama
+        full_prompt += f"\n<|im_start|>user\n{log.user_prompt}\n<|im_end|>\n"
+        # Assistant turn lama
+        # Kita perlu membersihkan tag <RESULT>... jika ada, atau biarkan raw jika Tim 3 butuh history lengkap
+        # Biasanya untuk konteks percakapan, kita ambil respons bersihnya
+        ai_resp = clean_think_tag(log.ai_response) 
+        full_prompt += f"\n<|im_start|>assistant\n{ai_resp}\n<|im_end|>\n"
+
+    # 3. Masukkan Input User Saat Ini + Literal {context}
+    # Sesuai instruksi: "harus ada literally “{context}” ya. Di content user terakhir"
+    full_prompt += f"\n<|im_start|>user\n{current_input}\n\nData konteks terkait kompetensi:\n{{context}}\n<|im_end|>\n\n<|im_start|>assistant"
+    
+    return full_prompt
 
 def calculate_duration(start_date: date, end_date: date = None):
     if not start_date:
@@ -130,28 +161,38 @@ async def start_interview_session(
     db: Session = Depends(get_db)
 ):
     profile = db.query(models.Profile).filter(models.Profile.user_id == current_user.id).first()
+    # ... (kode query education, experience, dll tetap sama) ...
     educations = db.query(models.Education).filter(models.Education.profile_id == profile.id).all()
     experiences = db.query(models.Experience).filter(models.Experience.profile_id == profile.id).all()
     certifications = db.query(models.Certification).filter(models.Certification.profile_id == profile.id).all()
 
-    user_data_prompt = format_profile_for_ai(current_user, profile, educations, experiences, certifications)
+    # Format data diri menjadi string
+    user_data_text = format_profile_for_ai(current_user, profile, educations, experiences, certifications)
+    # Tambahkan prefix "Input pengguna:" agar sesuai contoh
+    final_user_input = f"Input pengguna:\n{user_data_text}"
     
     # Reset Session Lama
     db.query(models.InterviewLog).filter(models.InterviewLog.user_id == current_user.id).delete()
     db.commit()
 
-    # Kirim Data Awal ke AI
-    ai_result = await ai_service.get_interview_reply(
-        prompt=user_data_prompt,      
-        history=[] 
+    # --- PERUBAHAN DI SINI ---
+    # Gunakan helper untuk menyusun prompt lengkap dengan System Prompt + {context}
+    full_prompt_payload = build_chatml_prompt(
+        system_prompt=SYSTEM_PROMPT_TEXT,
+        history_logs=[], # Belum ada history karena ini sesi baru
+        current_input=final_user_input
     )
+
+    # Kirim ke AI Service (hanya prompt string)
+    ai_result = await ai_service.get_interview_reply(prompt=full_prompt_payload)
     
     clean_response = clean_think_tag(ai_result.data.answer)
     ai_result.data.answer = clean_response
     
+    # Simpan ke DB (Simpan input aslinya saja, bukan full prompt ChatML, agar history rapi)
     new_log = models.InterviewLog(
         user_id=current_user.id,
-        user_prompt=user_data_prompt,
+        user_prompt=final_user_input,
         ai_response=clean_response 
     )
     db.add(new_log)
@@ -166,22 +207,27 @@ async def chat_interview(
     current_user: models.User = Depends(deps.get_current_user),
     db: Session = Depends(get_db)
 ):
-    # Ambil history chat sebelumnya
+    # Ambil history chat sebelumnya dari DB
     past_logs = db.query(models.InterviewLog).filter(
         models.InterviewLog.user_id == current_user.id
     ).order_by(models.InterviewLog.created_at.asc()).all()
     
-    history_payload = []
-    for log in past_logs:
-        history_payload.append({"role": "user", "content": log.user_prompt})
-        history_payload.append({"role": "assistant", "content": log.ai_response})
-     
-    # --- UPDATE: LANGSUNG KIRIM INPUT USER TANPA TAMBAHAN INSTRUKSI ---
-    ai_result = await ai_service.get_interview_reply(request.prompt, history_payload)
+    # --- PERUBAHAN DI SINI ---
+    # Tidak perlu lagi membuat list of dicts [{"role":...}], tapi langsung build string.
+    
+    full_prompt_payload = build_chatml_prompt(
+        system_prompt=SYSTEM_PROMPT_TEXT,
+        history_logs=past_logs,
+        current_input=request.prompt
+    )
+    
+    # Kirim prompt lengkap ke AI Service
+    ai_result = await ai_service.get_interview_reply(prompt=full_prompt_payload)
     
     clean_response = clean_think_tag(ai_result.data.answer)
     ai_result.data.answer = clean_response
     
+    # Simpan log baru ke DB (User prompt asli & AI response bersih)
     new_log = models.InterviewLog(
         user_id=current_user.id,
         user_prompt=request.prompt, 

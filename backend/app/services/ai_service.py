@@ -42,10 +42,9 @@ class AIService:
             raise HTTPException(status_code=500, detail=f"Gagal menghubungi AI Service (Timeout/Koneksi): {str(e)}")
 
     # A. INTERVIEW (Update Format Payload)
-    async def get_interview_reply(self, prompt: str, history: list = []) -> ai_schema.InterviewResponse:
+    async def get_interview_reply(self, prompt: str) -> ai_schema.InterviewResponse:
         payload = {
-            "prompt": prompt,   
-            "history": history   
+            "prompt": prompt
         }
         data = await self._post_request("/interview", payload)
         return ai_schema.InterviewResponse(**data)
