@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # --- 1. DATABASE LOKAL (PostgreSQL) ---
   db:
@@ -10,7 +8,7 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: dtp_db
     ports:
-      - "5433:5432" # Agar bisa diakses lewat DBeaver/PgAdmin di laptop
+      - "127.0.0.1:5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     restart: always
@@ -31,7 +29,7 @@ services:
       - "host.docker.internal:host-gateway"
     environment:
       # Koneksi ke Service DB di atas
-      - DATABASE_URL=postgresql://postgres:postgres@85.218.235.6:39588/dtp_db
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/dtp_db
       
       - TIM_AI_URL=http://85.218.235.6:39067
       
