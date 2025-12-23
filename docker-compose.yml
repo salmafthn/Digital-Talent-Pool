@@ -27,14 +27,13 @@ services:
     volumes:
       # FITUR PENTING: Sync folder laptop ke container agar Hot-Reload jalan
       - ./backend:/app
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       # Koneksi ke Service DB di atas
       - DATABASE_URL=postgresql://postgres:postgres@85.218.235.6:39588/dtp_db
       
-      # URL AI Service
-      # Jika AI jalan manual di laptop (luar docker), gunakan host.docker.internal
-      # Jika AI jalan di docker juga, gunakan nama servicenya
-      - TIM_AI_URL=http://host.docker.internal:5000 
+      - TIM_AI_URL=http://85.218.235.6:39067
       
       # MinIO (Optional: Bisa pakai VPS atau setup container minio sendiri)
       - MINIO_ENDPOINT=85.218.235.6:39751 

@@ -46,7 +46,7 @@ class AIService:
         payload = {
             "prompt": prompt
         }
-        data = await self._post_request("/interview", payload)
+        data = await self._post_request("/interview", payload) 
         return ai_schema.InterviewResponse(**data)
  
     async def analyze_talent_mapping(self, full_interview_text: str) -> ai_schema.MappingResponse:

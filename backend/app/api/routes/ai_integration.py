@@ -14,6 +14,7 @@ router = APIRouter(prefix="/ai", tags=["AI Integration"])
 ai_service = AIService()
 SYSTEM_PROMPT_TEXT = """Anda adalah interviewer dari platform talenta digital Diploy khusus Area Fungsi. Tugas Anda adalah menggali detail kompetensi talenta berdasarkan data awal yang diberikan, meluruskan jawaban yang kurang relevan, dan memastikan informasi yang terkumpul cukup tajam untuk pemetaan Area Fungsi dan Level Okupasi. Gunakan bahasa Indonesia yang baik dan benar, tetap profesional, dan jangan menggunakan bahasa gaul atau singkatan informal."""
 
+
 # --- MAPPING AREA ---
 AREA_MAPPING = {
     "DSC": "Data Science",
@@ -38,20 +39,13 @@ def build_chatml_prompt(system_prompt: str, history_logs: list, current_input: s
     """
     # 1. Mulai dengan System Prompt
     full_prompt = f"<|im_start|>system\n{system_prompt}\n<|im_end|>\n"
-
-    # 2. Masukkan History (jika ada)
-    # History diambil dari DB (user_prompt & ai_response)
+ 
     for log in history_logs:
         # User turn lama
-        full_prompt += f"\n<|im_start|>user\n{log.user_prompt}\n<|im_end|>\n"
-        # Assistant turn lama
-        # Kita perlu membersihkan tag <RESULT>... jika ada, atau biarkan raw jika Tim 3 butuh history lengkap
-        # Biasanya untuk konteks percakapan, kita ambil respons bersihnya
+        full_prompt += f"\n<|im_start|>user\n{log.user_prompt}\n<|im_end|>\n" 
         ai_resp = clean_think_tag(log.ai_response) 
         full_prompt += f"\n<|im_start|>assistant\n{ai_resp}\n<|im_end|>\n"
-
-    # 3. Masukkan Input User Saat Ini + Literal {context}
-    # Sesuai instruksi: "harus ada literally “{context}” ya. Di content user terakhir"
+ 
     full_prompt += f"\n<|im_start|>user\n{current_input}\n\nData konteks terkait kompetensi:\n{{context}}\n<|im_end|>\n\n<|im_start|>assistant"
     
     return full_prompt
@@ -174,9 +168,7 @@ async def start_interview_session(
     # Reset Session Lama
     db.query(models.InterviewLog).filter(models.InterviewLog.user_id == current_user.id).delete()
     db.commit()
-
-    # --- PERUBAHAN DI SINI ---
-    # Gunakan helper untuk menyusun prompt lengkap dengan System Prompt + {context}
+ 
     full_prompt_payload = build_chatml_prompt(
         system_prompt=SYSTEM_PROMPT_TEXT,
         history_logs=[], # Belum ada history karena ini sesi baru
@@ -211,9 +203,7 @@ async def chat_interview(
     past_logs = db.query(models.InterviewLog).filter(
         models.InterviewLog.user_id == current_user.id
     ).order_by(models.InterviewLog.created_at.asc()).all()
-    
-    # --- PERUBAHAN DI SINI ---
-    # Tidak perlu lagi membuat list of dicts [{"role":...}], tapi langsung build string.
+     
     
     full_prompt_payload = build_chatml_prompt(
         system_prompt=SYSTEM_PROMPT_TEXT,
@@ -261,8 +251,7 @@ def get_chat_history(
  
     cleaned_logs = []
     for log in logs:
-        # Sembunyikan prompt data diri yang panjang di history user
-        if log.user_prompt.startswith("Berikut data singkat saya"):
+        if "Berikut data singkat saya" in log.user_prompt:
             log.user_prompt = "" 
         
         if "<RESULT>" in log.ai_response:
