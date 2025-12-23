@@ -26,6 +26,9 @@ app.mount("/static", StaticFiles(directory="uploads"), name="static")
 origins = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    "http://85.218.235.6:39997",
+    "http://85.218.235.6:39927",
+    "*"
 ]
 
 app.add_middleware(

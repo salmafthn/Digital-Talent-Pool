@@ -1,0 +1,70 @@
+version: '3.8'
+
+services:
+  # --- 1. DATABASE LOKAL (PostgreSQL) ---
+  db:
+    image: postgres:15-alpine
+    container_name: local-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: dtp_db
+    ports:
+      - "5433:5432" # Agar bisa diakses lewat DBeaver/PgAdmin di laptop
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: always
+
+  # --- 2. BACKEND (FastAPI) ---
+  backend:
+    container_name: local-backend
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "3001:8001"
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
+    volumes:
+      # FITUR PENTING: Sync folder laptop ke container agar Hot-Reload jalan
+      - ./backend:/app
+    environment:
+      # Koneksi ke Service DB di atas
+      - DATABASE_URL=postgresql://postgres:postgres@85.218.235.6:39588/dtp_db
+      
+      # URL AI Service
+      # Jika AI jalan manual di laptop (luar docker), gunakan host.docker.internal
+      # Jika AI jalan di docker juga, gunakan nama servicenya
+      - TIM_AI_URL=http://host.docker.internal:5000 
+      
+      # MinIO (Optional: Bisa pakai VPS atau setup container minio sendiri)
+      - MINIO_ENDPOINT=85.218.235.6:39751 
+      - MINIO_ACCESS_KEY=tim4_dtp
+      - MINIO_SECRET_KEY=87654321
+      - MINIO_BUCKET=dtp-upload
+      - MINIO_SECURE=False
+    depends_on:
+      - db
+
+  # --- 3. FRONTEND (Next.js) ---
+  frontend:
+    container_name: local-frontend
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args: 
+        NEXT_PUBLIC_API_URL: "http://85.218.235.6:39927"
+    ports:
+      - "8443:3000"
+    volumes:
+      # Sync folder laptop agar Hot-Reload jalan
+      - ./frontend:/app
+      # PENTING: Jangan sync node_modules dari laptop, pakai yg di container
+      - /app/node_modules
+    environment:
+      # Di local, browser mengakses backend lewat localhost laptop
+      - NEXT_PUBLIC_API_URL=http://85.218.235.6:39927
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
