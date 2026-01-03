@@ -1,121 +1,106 @@
-# DTP Backend API
+# Digital Talent Pool - Tim 4 DTP
 
-Backend ini dibangun menggunakan Python (FastAPI). Sistem menggunakan PostgreSQL sebagai database utama (via SQLAlchemy), Google Gemini untuk fitur AI Chat, dan sistem manajemen file statis untuk upload dokumen/gambar.
+Repositori ini berisi source code backend untuk sistem Retrieval-Augmented Generation (RAG) yang dikembangkan dalam program Artificial Intelligence Talent Factory (AITF). Sistem ini menangani pemrosesan dokumen, penyimpanan vektor (Vector Database), dan manajemen infrastruktur AI.
 
-## Prasyarat Sistem
+## Daftar Isi
 
-Pastikan di komputer Anda sudah terinstall:
+1. [Akses Server (Deployment)](#akses-server-deployment)
+2. [Instalasi Lokal dengan Docker](#instalasi-lokal-dengan-docker)
+3. [Manajemen Database (PostgreSQL)](#manajemen-database-postgresql)
+4. [Tech Stack](#tech-stack)
 
-- Python 3.10 atau lebih baru (3.12 direkomendasikan)
-- PostgreSQL (untuk database lokal)
+---
+
+## Akses Server (Deployment)
+
+Aplikasi backend telah dideploy pada Virtual Private Server (VPS) dan dapat diakses melalui URL berikut untuk keperluan testing API (Swagger UI):
+
+**Base URL:**
+`http://85.218.235.6:39997/`
+
+> **Catatan:** Pastikan Anda terhubung dengan jaringan yang stabil.
+
+---
+
+## Jika Ingin Menggunakan Docker - Instalasi Lokal dengan Docker
+
+Untuk menjalankan proyek ini di mesin lokal atau server sendiri menggunakan Docker, ikuti langkah-langkah berikut:
+
+### Prasyarat
+- Docker Engine
+- Docker Compose
 - Git
 
-## Cara Install dan Menjalankan
+### Langkah Instalasi
 
-Ikuti langkah berikut untuk menjalankan server di lingkungan lokal:
-
-1. **Masuk ke Folder Backend**
-   Pastikan terminal Anda berada di dalam folder `backend`.
-
-2. **Buat Virtual Environment**
-   Disarankan menggunakan virtual environment agar library tidak bentrok dengan sistem lain.
-
+1. **Clone Repository**
+   Salin repositori ini ke mesin lokal Anda:
    ```bash
-   python -m venv venv
+   git clone [https://github.com/username/repo-name.git](https://github.com/username/repo-name.git)
+   cd repo-name
 
-   ```
+2. **Konfigurasi Environment Variable**
+Salin file contoh konfigurasi dan sesuaikan isinya.
+```bash
+cp .env.example .env
 
-3. **Aktifkan Virtual Environment**
-
-   - Windows (CMD): `venv\Scripts\activate`
-   - Windows (PowerShell): `.\venv\Scripts\Activate.ps1`
-   - Mac/Linux: `source venv/bin/activate`
-
-4. **Install Dependencies**
-   Install seluruh library yang dibutuhkan dari file requirements.
-
-   ```bash
-   pip install -r requirements.txt
-
-   ```
-
-5. **Konfigurasi Environment Variable (.env)**
-
-   - Buat file baru bernama `.env` di dalam folder `backend/`.
-   - Copy isi dari `.env.example` (jika ada) atau gunakan format berikut:
-
-     ```ini
-     # Database Configuration (PostgreSQL)
-     DATABASE_URL="postgresql://user:password@localhost:5432/dtp_db"
-
-     # Security (JWT)
-     SECRET_KEY="isi_dengan_random_string_panjang"
-     ALGORITHM="HS256"
-     ACCESS_TOKEN_EXPIRE_MINUTES=30
-
-     ```
-
-6. **Setup Database & Seeding Data**
-   Digunakan untuk mengisi database dengan data dummy (User, Profil, Pendidikan, dll) secara otomatis:
-
-   ```bash
-   python -m app.initial_data
-   ```
-
-7. **Jalankan Server**
-   Gunakan perintah berikut untuk menjalankan server mode development:
-
-   ```bash
-   uvicorn app.main:app --reload
-   ```
-
-8. **Akses Aplikasi**
-
-   - Mencoba API (Swagger UI): http://127.0.0.1:8000/docs
-   - File Uploads (Static): https://www.google.com/search?q=http://127.0.0.1:8000/static/
-
-## Struktur Folder Project
-
-Struktur proyek mengikuti pola Modular Monolith untuk skalabilitas:
-
-```text
-backend/
-├── uploads/                # Tempat penyimpanan file fisik (Avatar/Sertifikat)
-├── app/                    # Source code utama
-│   ├── api/
-│   │   ├── routes/         # Endpoint API (Auth, Profile, Chat)
-│   │   ├── deps.py         # Dependency Injection (Auth Token Check)
-│   │   └── main.py         # Router aggregator
-│   ├── core/
-│   │   ├── db.py           # Konfigurasi koneksi Database (SQLAlchemy)
-│   │   └── security.py     # Logika Hashing Password & JWT
-│   ├── schemas/            # Pydantic Models (Validasi Request/Response)
-│   ├── services/           # Logika Bisnis (CRUD Profile, Integrasi AI)
-│   ├── models.py           # Definisi Tabel Database
-│   ├── seeder.py           # Logika pengisian data dummy (Faker)
-│   └── main.py             # Entry point aplikasi FastAPI
-├── requirements.txt        # Daftar library Python
-└── .env                    # File konfigurasi rahasia
 ```
 
-## Fitur Utama
 
-1.  **Otentikasi & Keamanan**
+Pastikan variabel `DATABASE_URL` diatur untuk menggunakan host service docker container, bukan localhost:
+`postgresql://postgres:password@db:5432/dtp_db`
+3. **Jalankan Container**
+Bangun dan jalankan service menggunakan Docker Compose:
+```bash
+docker compose up -d --build
 
-    - Login/Register menggunakan JWT (JSON Web Token).
-    - Password hashing menggunakan Bcrypt.
+```
 
-2.  **Manajemen Profil Kompleks**
 
-    - Satu user memiliki banyak riwayat Pendidikan, Sertifikasi, dan Pengalaman Kerja.
-    - Validasi data input menggunakan Pydantic (Enum untuk Dropdown).
+4. **Verifikasi Instalasi**
+Cek status container untuk memastikan semua service berjalan (Backend, DB, Qdrant):
+```bash
+docker ps
 
-3.  **File Handling**
+```
 
-    - Upload Avatar dan Sertifikat (PDF/Image).
-    - Penyimpanan file secara lokal di folder `uploads/` dengan akses URL statis.
 
-4.  **Integrasi AI**
+Jika berhasil, API dapat diakses di `http://localhost:8000/docs`.
 
-    - Chatbot menggunakan Google Gemini 2.5 Flash.
-    - Mocking service untuk integrasi dengan sistem eksternal (Tim 3).
+---
+
+## Manajemen Database (PostgreSQL)
+
+Untuk alasan keamanan dan stabilitas, port database tidak dibuka ke publik (internet). Akses database hanya diperbolehkan melalui **SSH Tunneling** ke VPS.
+
+### Cara Koneksi (via pgAdmin / DBeaver)
+
+Gunakan pengaturan berikut pada database client Anda:
+
+**1. SSH Tunnel Configuration (Bastion Host):**
+
+* **Host:** 85.218.235.6
+* **Port:** 39609 (Custom SSH Port)
+* **Username:** tim4
+* **Auth Method:** Identity File (Private Key)
+
+**2. Database Connection (Target):**
+
+* **Host:** 127.0.0.1 (Localhost relative to VPS)
+* **Port:** 5433 (Internal Port)
+* **Username:** postgres
+* **Password:** (Sesuai konfigurasi tim)
+* **Database:** dtp_db
+
+> **Penting:** Jangan mencoba menghubungkan database langsung melalui IP Publik tanpa SSH Tunnel karena koneksi akan ditolak oleh firewall server.
+
+---
+
+## Tech Stack
+
+* **Language:** Python 3.10+
+* **Framework:** FastAPI
+* **Database:** PostgreSQL 15
+* **Vector Search:** Qdrant
+* **Infrastructure:** Docker & Docker Compose
+* **Server:** Linux VPS (Ubuntu)
