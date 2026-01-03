@@ -27,10 +27,7 @@ MAJORS = [
 
 def seed_all(db: Session) -> None:
     logger.info("🌱 Mulai seeding data DTP...")
-    
-    # -------------------------------------------------------
-    # 1. BUAT SUPER ADMIN (Jika belum ada)
-    # -------------------------------------------------------
+     
     admin_email = "admin@dtp.id"
     user = db.query(models.User).filter(models.User.email == admin_email).first()
     
@@ -57,10 +54,7 @@ def seed_all(db: Session) -> None:
         db.commit()
     else:
         logger.info("Admin sudah ada, skip.")
-
-    # -------------------------------------------------------
-    # 2. BUAT 10 USER DUMMY
-    # -------------------------------------------------------
+ 
     logger.info("Membuat 10 User Dummy...")
     
     levels = ["SMA/SMK", "D3", "D4", "S1", "S2"]

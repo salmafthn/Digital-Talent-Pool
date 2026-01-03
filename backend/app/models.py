@@ -182,6 +182,4 @@ class InterviewLog(Base):
     # Relasi ke User
     user = relationship("User", back_populates="logs")
 
-# ... JANGAN LUPA tambahkan back_populates di class User di atas ...
-# Di dalam class User(Base):
-#    logs = relationship("InterviewLog", back_populates="user")
+ 

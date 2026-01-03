@@ -3,8 +3,7 @@ from typing import Any, Union
 from jose import jwt
 from passlib.context import CryptContext
 import os
-
-# Konfigurasi (Bisa juga ambil dari config.py jika ada)
+ 
 SECRET_KEY = os.getenv("SECRET_KEY", "rahasia_default_kalau_lupa_set_env") 
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30

@@ -59,7 +59,7 @@ class EducationBase(BaseModel):
 
     @model_validator(mode='after')
     def check_education_logic(self):
-        # LOGIKA 1: Jika "Lainnya", kosongkan semua field lain
+ 
         if self.level == EducationLevelEnum.LAINNYA:
             self.institution_name = None
             self.faculty = None
@@ -70,16 +70,14 @@ class EducationBase(BaseModel):
             self.final_project_title = None
             self.is_current = False # Default false
             return self
-
-        # LOGIKA 2: Jika BUKAN "Lainnya", Institusi, Jurusan, Tahun Masuk WAJIB DIISI
+ 
         if not self.institution_name:
             raise ValueError("Nama Institusi wajib diisi")
         if not self.major:
             raise ValueError("Jurusan wajib diisi")
         if not self.enrollment_year:
             raise ValueError("Tahun Masuk wajib diisi")
-
-        # LOGIKA 3: SMA/SMK tidak perlu IPK dll
+ 
         if self.level == EducationLevelEnum.SMA_SMK:
             self.gpa = None
             self.faculty = None

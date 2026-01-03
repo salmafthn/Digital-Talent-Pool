@@ -11,7 +11,7 @@ from .auth_schema import (
 # Import dari profile_schema
 from .profile_schema import (
     ProfileUpdate,
-    ProfileFullResponse, # <--- Pastikan pakai nama ini (bukan ProfileResponse)
+    ProfileFullResponse,  
     EducationCreate,
     EducationResponse,
     CertificationCreate,
@@ -25,5 +25,4 @@ from .profile_schema import (
     FunctionalAreaEnum
 )
 
-# Jika Anda punya chat schema, import disini
-# from .ai_schema import ...
+ 

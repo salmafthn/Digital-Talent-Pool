@@ -32,7 +32,7 @@ class AIService:
                 return response.json()
                 
         except httpx.RemoteProtocolError:
-            # Ini error spesifik "Server disconnected without sending a response"
+            
             print("❌ AI Service putus koneksi mendadak.")
             raise HTTPException(status_code=502, detail="AI Service terputus di tengah jalan. Kemungkinan server AI restart/crash.")
         except httpx.HTTPStatusError as e:

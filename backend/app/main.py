@@ -4,11 +4,9 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import os
-
-# --- UPDATE IMPORT DI SINI ---
-from app.core.db import engine, Base  # Ambil dari app.core.db
-from app.api.main import api_router   # Ambil Router Utama dari app.api.main
-from app import models                # Ambil models dari app
+from app.core.db import engine, Base 
+from app.api.main import api_router   
+from app import models               
 
 # Create Tables
 Base.metadata.create_all(bind=engine)
@@ -84,7 +82,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         content={"detail": errors, "message": "Terjadi kesalahan validasi data"}
     )
 
-# --- PASANG ROUTER UTAMA ---
+# --- ROUTER UTAMA ---
 app.include_router(api_router)
 
 @app.get("/")

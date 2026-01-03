@@ -3,8 +3,7 @@ import os
 from dotenv import load_dotenv
 
 load_dotenv()
-
-# Konversi string "True"/"False" dari .env jadi Boolean
+ 
 is_secure = os.getenv("MINIO_SECURE", "False").lower() == "true"
 
 minio_client = Minio(
@@ -15,8 +14,7 @@ minio_client = Minio(
 )
 
 bucket_name = os.getenv("MINIO_BUCKET", "dtp-upload")
-
-# Cek koneksi saat start
+ 
 try:
     if not minio_client.bucket_exists(bucket_name):
         print(f"Bucket {bucket_name} tidak ditemukan, membuat baru...")

@@ -21,7 +21,7 @@ def create_user(db: Session, user: schemas.UserCreate):
     
     # 3. Buat Profile Object
     db_profile = models.Profile(
-        user_id=db_user.id, # Kita sudah dapat ID dari flush diatas
+        user_id=db_user.id,  
         full_name=user.full_name,
         nik=user.nik,
         gender=user.gender.value,

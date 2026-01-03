@@ -3,15 +3,11 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import jwt, JWTError
 from sqlalchemy.orm import Session
-
-# Update Import: Ambil dari lokasi baru
+ 
 from app.core.db import get_db
 from app.core.security import SECRET_KEY, ALGORITHM
 from app import models
-
-# Definisikan tokenUrl sesuai struktur router baru (tanpa prefix /api jika di-mount di root, 
-# tapi biasanya di main.py kita mount api_router. Jadi sesuaikan path loginnya)
-# Jika login ada di /auth/login, maka:
+ 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 
 def get_current_user(
